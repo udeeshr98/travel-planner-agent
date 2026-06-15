@@ -16,17 +16,162 @@ st.set_page_config(page_title="Travel Planner Agent", page_icon="✈️", layout
 
 
 COUNTRY_DESTINATION_SUGGESTIONS = {
-    "Thailand": ["Phuket", "Krabi", "Pattaya", "Bangkok", "Chiang Mai", "Koh Samui", "Phi Phi Islands"],
-    "Indonesia": ["Bali", "Ubud", "Jakarta", "Yogyakarta", "Lombok", "Komodo Island"],
-    "Malaysia": ["Kuala Lumpur", "Langkawi", "Penang", "Malacca", "Cameron Highlands", "Kota Kinabalu"],
-    "Singapore": ["Marina Bay", "Sentosa", "Orchard Road", "Chinatown", "Little India"],
-    "Vietnam": ["Da Nang", "Hoi An", "Hanoi", "Ho Chi Minh City", "Ha Long Bay", "Nha Trang"],
-    "Japan": ["Tokyo", "Osaka", "Kyoto", "Nara", "Hokkaido", "Okinawa"],
-    "UAE": ["Dubai", "Abu Dhabi", "Sharjah", "Ras Al Khaimah"],
-    "France": ["Paris", "Nice", "Lyon", "Marseille", "Bordeaux"],
-    "Italy": ["Rome", "Venice", "Florence", "Milan", "Amalfi Coast"],
-    "Switzerland": ["Zurich", "Lucerne", "Interlaken", "Geneva", "Zermatt"],
+    "India": [
+        "Chennai",
+        "Bangalore",
+        "Delhi",
+        "Kolkata",
+        "Mumbai",
+        "Pune",
+        "Hyderabad",
+        "Kerala",
+    ],
+    "Thailand": [
+        "Phuket",
+        "Krabi",
+        "Pattaya",
+        "Bangkok",
+        "Chiang Mai",
+        "Koh Samui",
+        "Phi Phi Islands",
+    ],
+    "Indonesia": [
+        "Bali",
+        "Ubud",
+        "Jakarta",
+        "Yogyakarta",
+        "Lombok",
+        "Komodo Island",
+    ],
+    "Malaysia": [
+        "Kuala Lumpur",
+        "Langkawi",
+        "Penang",
+        "Malacca",
+        "Cameron Highlands",
+        "Kota Kinabalu",
+    ],
+    "Singapore": [
+        "Marina Bay",
+        "Sentosa",
+        "Orchard Road",
+        "Chinatown",
+        "Little India",
+    ],
+    "Vietnam": [
+        "Da Nang",
+        "Hoi An",
+        "Hanoi",
+        "Ho Chi Minh City",
+        "Ha Long Bay",
+        "Nha Trang",
+    ],
+    "Japan": [
+        "Tokyo",
+        "Osaka",
+        "Kyoto",
+        "Nara",
+        "Hokkaido",
+        "Okinawa",
+    ],
+    "United States": [
+        "New York",
+        "Los Angeles",
+        "San Francisco",
+        "Las Vegas",
+        "Miami",
+        "Chicago",
+        "Washington DC",
+        "Orlando",
+    ],
+    "Australia": [
+        "Sydney",
+        "Melbourne",
+        "Brisbane",
+        "Gold Coast",
+        "Perth",
+        "Adelaide",
+        "Cairns",
+        "Tasmania",
+    ],
+    "New Zealand": [
+        "Auckland",
+        "Queenstown",
+        "Christchurch",
+        "Wellington",
+        "Rotorua",
+        "Milford Sound",
+    ],
+    "China": [
+        "Beijing",
+        "Shanghai",
+        "Guangzhou",
+        "Shenzhen",
+        "Chengdu",
+        "Xi'an",
+        "Hangzhou",
+    ],
+    "South Korea": [
+        "Seoul",
+        "Busan",
+        "Jeju",
+        "Incheon",
+        "Daegu",
+        "Gyeongju",
+    ],
+    "Iceland": [
+        "Reykjavik",
+        "Golden Circle",
+        "Blue Lagoon",
+        "South Coast",
+        "Akureyri",
+        "Vik",
+    ],
+    "Maldives": [
+        "Male",
+        "Maafushi",
+        "Hulhumale",
+        "Ari Atoll",
+        "Baa Atoll",
+    ],
+    "Mauritius": [
+        "Grand Baie",
+        "Flic en Flac",
+        "Le Morne",
+        "Port Louis",
+        "Belle Mare",
+    ],
+    "UAE": [
+        "Dubai",
+        "Abu Dhabi",
+        "Sharjah",
+        "Ras Al Khaimah",
+    ],
+    "France": [
+        "Paris",
+        "Nice",
+        "Lyon",
+        "Marseille",
+        "Bordeaux",
+    ],
+    "Italy": [
+        "Rome",
+        "Venice",
+        "Florence",
+        "Milan",
+        "Amalfi Coast",
+    ],
+    "Switzerland": [
+        "Zurich",
+        "Lucerne",
+        "Interlaken",
+        "Geneva",
+        "Zermatt",
+    ],
 }
+
+
+AVAILABLE_COUNTRIES = list(COUNTRY_DESTINATION_SUGGESTIONS.keys())
 
 
 def init_state():
@@ -50,8 +195,7 @@ def init_state():
 def get_suggested_destinations(country):
     if not country:
         return []
-    normalized_country = country.strip()
-    return COUNTRY_DESTINATION_SUGGESTIONS.get(normalized_country, [])
+    return COUNTRY_DESTINATION_SUGGESTIONS.get(country, [])
 
 
 def build_destination_search_query(custom_city_region, selected_cities, destination_country):
@@ -101,7 +245,7 @@ def collect_profile_form():
         """
         <div class="planner-hero">
             <h2>Design your next trip</h2>
-            <p>Choose a country, explore destination ideas inside it, and let the planner recommend how to distribute your days across the best places.</p>
+            <p>Choose a country from the supported destinations, explore city ideas inside it, and let the planner recommend how to distribute your days across the best places.</p>
             <div class="planner-hero-badges">
                 <span class="planner-badge">Country-based suggestions</span>
                 <span class="planner-badge">Multi-city trip planning</span>
@@ -128,7 +272,7 @@ def collect_profile_form():
     st.markdown('<div class="section-kicker">Trip planner</div>', unsafe_allow_html=True)
     st.markdown("## Plan your travel inputs")
     st.markdown(
-        '<div class="form-caption">Tell the planner the country, your travel preferences, and the places you are considering. The app will suggest how to split the itinerary across them.</div>',
+        '<div class="form-caption">Choose a supported country, tell the planner the places you are considering, and let it suggest how to split the itinerary for you.</div>',
         unsafe_allow_html=True,
     )
 
@@ -140,13 +284,18 @@ def collect_profile_form():
                 """
                 <div class="trip-card">
                     <h4>Destination setup</h4>
-                    <p>Start with the country first, then optionally choose one or more cities or regions you are interested in.</p>
+                    <p>Pick the destination country from the available options, then choose one or more cities or regions you are interested in.</p>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
             origin = st.text_input("Origin city", placeholder="e.g. Chennai")
-            destination_country = st.text_input("Destination country", placeholder="e.g. Thailand")
+            destination_country = st.selectbox(
+                "Destination country",
+                options=AVAILABLE_COUNTRIES,
+                index=None,
+                placeholder="Select a country you want to explore",
+            )
 
         with top2:
             st.markdown(
@@ -198,7 +347,7 @@ def collect_profile_form():
 
         custom_city_region = st.text_input(
             "Custom city / region (optional)",
-            placeholder="e.g. Phi Phi Islands, Ao Nang, or any place not listed above",
+            placeholder="Add a city, island, town, or region not listed above",
         )
 
         render_selected_destinations_preview(selected_cities, custom_city_region, days)
@@ -255,7 +404,6 @@ def collect_profile_form():
 
     errors = []
     origin = clean_text(origin)
-    destination_country = clean_text(destination_country)
     custom_city_region = clean_text(custom_city_region)
 
     if not origin:
@@ -446,7 +594,7 @@ def main():
             """
             <div class="info-banner">
                 <strong>How this view works</strong><br>
-                Choose a country, select one or more destinations you are considering, and generate the dashboard. The planner will recommend how the trip can be split across the chosen places, while also showing overall weather guidance and city-level planning ideas.
+                Choose a supported country, select one or more destinations you are considering, and generate the dashboard. The planner will recommend how the trip can be split across the chosen places, while also showing overall weather guidance and city-level planning ideas.
             </div>
             """,
             unsafe_allow_html=True,
