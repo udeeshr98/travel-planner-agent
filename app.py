@@ -186,6 +186,7 @@ def init_state():
         "selected_city_options": [],
         "selected_cities": [],
         "country_weather_mode": True,
+        "destination_country": None,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -276,6 +277,29 @@ def collect_profile_form():
         unsafe_allow_html=True,
     )
 
+    st.markdown(
+        """
+        <div class="trip-card">
+            <h4>Destination country</h4>
+            <p>Select the country first. Once selected, the suggested cities and regions will appear automatically below.</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    destination_country = st.selectbox(
+        "Destination country",
+        options=AVAILABLE_COUNTRIES,
+        index=AVAILABLE_COUNTRIES.index(st.session_state.destination_country)
+        if st.session_state.destination_country in AVAILABLE_COUNTRIES
+        else None,
+        placeholder="Select a country you want to explore",
+        key="destination_country_selector",
+    )
+
+    st.session_state.destination_country = destination_country
+    suggested_destinations = get_suggested_destinations(destination_country)
+
     with st.form("travel_form"):
         top1, top2 = st.columns(2)
 
@@ -283,18 +307,29 @@ def collect_profile_form():
             st.markdown(
                 """
                 <div class="trip-card">
-                    <h4>Destination setup</h4>
-                    <p>Pick the destination country from the available options, then choose one or more cities or regions you are interested in.</p>
+                    <h4>Origin and destination ideas</h4>
+                    <p>Tell the planner where the journey starts and which places inside the selected country you are considering.</p>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
             origin = st.text_input("Origin city", placeholder="e.g. Chennai")
-            destination_country = st.selectbox(
-                "Destination country",
-                options=AVAILABLE_COUNTRIES,
-                index=None,
-                placeholder="Select a country you want to explore",
+
+            selected_cities = st.multiselect(
+                "Suggested cities / regions",
+                options=suggested_destinations,
+                default=[],
+                placeholder="Select one or more destination ideas",
+            )
+
+            if destination_country and suggested_destinations:
+                st.caption(f"Available suggestions for {destination_country}: {', '.join(suggested_destinations)}")
+            elif destination_country and not suggested_destinations:
+                st.caption(f"No preset city suggestions available yet for {destination_country}.")
+
+            custom_city_region = st.text_input(
+                "Custom city / region (optional)",
+                placeholder="Add a city, island, town, or region not listed above",
             )
 
         with top2:
@@ -325,30 +360,6 @@ def collect_profile_form():
                     ],
                 )
                 budget_scope = st.selectbox("Budget applies to", ["Total trip", "Per person"])
-
-        suggested_destinations = get_suggested_destinations(destination_country)
-
-        st.markdown(
-            """
-            <div class="trip-card">
-                <h4>Suggested destinations inside the country</h4>
-                <p>Select one or more places you are considering. The planner will later recommend how to distribute your trip across them.</p>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        selected_cities = st.multiselect(
-            "Suggested cities / regions",
-            options=suggested_destinations,
-            default=[],
-            placeholder="Select one or more destination ideas",
-        )
-
-        custom_city_region = st.text_input(
-            "Custom city / region (optional)",
-            placeholder="Add a city, island, town, or region not listed above",
-        )
 
         render_selected_destinations_preview(selected_cities, custom_city_region, days)
 
