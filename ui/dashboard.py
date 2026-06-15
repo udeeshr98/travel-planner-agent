@@ -32,6 +32,128 @@ def inject_custom_css():
             font-size: 0.98rem;
         }
 
+        .planner-hero {
+            position: relative;
+            overflow: hidden;
+            border-radius: 24px;
+            padding: 1.4rem 1.5rem;
+            margin-bottom: 1rem;
+            background: linear-gradient(135deg, #0f172a 0%, #1d4ed8 45%, #0ea5e9 100%);
+            color: white;
+            box-shadow: 0 18px 50px rgba(15, 23, 42, 0.18);
+        }
+
+        .planner-hero h2 {
+            margin: 0 0 0.35rem 0;
+            font-size: 2rem;
+            line-height: 1.1;
+        }
+
+        .planner-hero p {
+            margin: 0;
+            color: rgba(255,255,255,0.88);
+            font-size: 0.98rem;
+            max-width: 760px;
+        }
+
+        .planner-hero-badges {
+            margin-top: 0.9rem;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .planner-badge {
+            display: inline-block;
+            padding: 0.38rem 0.72rem;
+            border-radius: 999px;
+            background: rgba(255,255,255,0.14);
+            border: 1px solid rgba(255,255,255,0.18);
+            font-size: 0.8rem;
+            font-weight: 700;
+            backdrop-filter: blur(6px);
+        }
+
+        .trip-shell {
+            background: linear-gradient(180deg, rgba(255,255,255,0.98), rgba(248,250,252,0.98));
+            border: 1px solid rgba(148, 163, 184, 0.22);
+            border-radius: 24px;
+            padding: 1.2rem;
+            box-shadow: 0 14px 36px rgba(15, 23, 42, 0.06);
+            margin-bottom: 1rem;
+        }
+
+        .trip-card {
+            background: white;
+            border: 1px solid rgba(148, 163, 184, 0.18);
+            border-radius: 20px;
+            padding: 1rem 1rem 0.6rem 1rem;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+            margin-bottom: 1rem;
+        }
+
+        .trip-card h4 {
+            margin: 0 0 0.2rem 0;
+            color: #0f172a;
+            font-size: 1rem;
+            font-weight: 800;
+        }
+
+        .trip-card p {
+            margin: 0 0 0.85rem 0;
+            color: #64748b;
+            font-size: 0.9rem;
+        }
+
+        .quick-chip-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.6rem;
+            margin: 0.2rem 0 1rem 0;
+        }
+
+        .quick-chip {
+            background: linear-gradient(180deg, #ffffff, #f8fafc);
+            border: 1px solid rgba(148, 163, 184, 0.20);
+            color: #0f172a;
+            border-radius: 16px;
+            padding: 0.7rem 0.9rem;
+            min-width: 150px;
+            box-shadow: 0 6px 18px rgba(15, 23, 42, 0.04);
+        }
+
+        .quick-chip .label {
+            display: block;
+            font-size: 0.74rem;
+            color: #64748b;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            font-weight: 700;
+            margin-bottom: 0.15rem;
+        }
+
+        .quick-chip .value {
+            font-size: 1rem;
+            font-weight: 800;
+            color: #0f172a;
+        }
+
+        .section-kicker {
+            font-size: 0.82rem;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            color: #2563eb;
+            font-weight: 800;
+            margin-bottom: 0.25rem;
+        }
+
+        .form-caption {
+            color: #64748b;
+            font-size: 0.92rem;
+            margin-top: -0.2rem;
+            margin-bottom: 0.8rem;
+        }
+
         .section-title {
             font-size: 1.05rem;
             font-weight: 700;
@@ -147,9 +269,21 @@ def inject_custom_css():
             padding: 0.6rem 1rem;
         }
 
-        .stButton > button {
-            border-radius: 12px;
-            font-weight: 600;
+        .stButton > button,
+        div[data-testid="stForm"] button {
+            border-radius: 14px;
+            font-weight: 700;
+            min-height: 3rem;
+        }
+
+        div[data-testid="stForm"] {
+            border: none !important;
+            background: transparent !important;
+        }
+
+        div[data-testid="stForm"] > form {
+            border: none !important;
+            background: transparent !important;
         }
 
         .source-chip {
