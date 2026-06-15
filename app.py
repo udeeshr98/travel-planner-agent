@@ -207,9 +207,7 @@ def build_destination_search_query(custom_city_region, selected_cities, destinat
         return custom_value
 
     if selected_cities:
-        if len(selected_cities) == 1:
-            return selected_cities[0]
-        return ", ".join(selected_cities)
+        return selected_cities[0]
 
     return clean_text(destination_country)
 
@@ -431,7 +429,7 @@ def collect_profile_form():
             st.error(error)
         return
 
-    destination_search_query = build_destination_search_query(
+    anchor_destination_query = build_destination_search_query(
         custom_city_region=custom_city_region,
         selected_cities=selected_cities,
         destination_country=destination_country,
@@ -440,7 +438,8 @@ def collect_profile_form():
     parsed_profile = {
         "origin": origin,
         "destination_country": destination_country,
-        "destination_city_region": destination_search_query,
+        "destination_city_region": anchor_destination_query,
+        "anchor_destination": anchor_destination_query,
         "selected_cities": selected_cities,
         "custom_city_region": custom_city_region,
         "days": int(days),
@@ -458,10 +457,10 @@ def collect_profile_form():
 
     try:
         with st.spinner("Finding destination matches..."):
-            location_options = get_location_options(parsed_profile["destination_city_region"])
+            location_options = get_location_options(anchor_destination_query)
 
         if not location_options:
-            st.warning("Could not find destination details. Try selecting a different suggested destination or enter a more specific city / region.")
+            st.warning("Could not find destination details for the primary anchor city. Try selecting a different first city or enter a more specific city / region.")
             return
 
         filtered_options = []
@@ -504,6 +503,7 @@ def render_location_picker_and_generate():
 
     chosen_cities = st.session_state.pending_profile.get("selected_cities", [])
     custom_city_region = st.session_state.pending_profile.get("custom_city_region", "")
+    anchor_destination = st.session_state.pending_profile.get("anchor_destination", "")
 
     c1, c2 = st.columns([1.25, 1])
 
@@ -518,6 +518,9 @@ def render_location_picker_and_generate():
                 <strong>Primary anchor destination</strong><br>
                 {selected_location.get("name")}, {selected_location.get("country")}<br>
                 <span class="muted">Timezone: {selected_location.get("timezone")} • Lat: {selected_location.get("latitude")} • Lon: {selected_location.get("longitude")}</span>
+                <div class="divider-space"></div>
+                <strong>Anchor used for lookup</strong><br>
+                <span class="muted">{anchor_destination}</span>
                 <div class="divider-space"></div>
                 <strong>Trip planning mode</strong><br>
                 The planner will use this location as the anchor and recommend how to distribute your trip across the selected destinations.
