@@ -31,41 +31,133 @@ def init_state():
 
 
 def collect_profile_form():
-    st.markdown("### Trip inputs")
+    st.markdown(
+        """
+        <div class="planner-hero">
+            <h2>Design your next trip</h2>
+            <p>Build a smarter travel plan with destination research, hotel ideas, food suggestions, local transport guidance, and practical safety notes.</p>
+            <div class="planner-hero-badges">
+                <span class="planner-badge">Smart destination research</span>
+                <span class="planner-badge">Hotel + food matching</span>
+                <span class="planner-badge">Client-ready dashboard</span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown(
+        """
+        <div class="quick-chip-row">
+            <div class="quick-chip"><span class="label">Trip style</span><span class="value">Modern planner</span></div>
+            <div class="quick-chip"><span class="label">Experience</span><span class="value">Travel-focused UI</span></div>
+            <div class="quick-chip"><span class="label">Output</span><span class="value">Dashboard report</span></div>
+            <div class="quick-chip"><span class="label">Best for</span><span class="value">Leisure trips</span></div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    st.markdown('<div class="trip-shell">', unsafe_allow_html=True)
+    st.markdown('<div class="section-kicker">Trip planner</div>', unsafe_allow_html=True)
+    st.markdown("## Plan your travel inputs")
+    st.markdown(
+        '<div class="form-caption">Enter the core details below and the app will turn them into a polished travel dashboard.</div>',
+        unsafe_allow_html=True,
+    )
+
     with st.form("travel_form"):
-        c1, c2, c3 = st.columns(3)
+        top1, top2 = st.columns(2)
 
-        with c1:
-            origin = st.text_input("Origin city")
-            destination_country = st.text_input("Destination country")
-            destination_city_region = st.text_input("Destination city / region")
-
-        with c2:
-            days = st.number_input("Number of days", min_value=1, max_value=30, value=4)
-            travelers = st.number_input("Number of travelers", min_value=1, max_value=10, value=2)
-            budget = st.selectbox(
-                "Budget",
-                [
-                    "Below 50K",
-                    "50K to 1L",
-                    "1L to 2L",
-                    "2L to 3L",
-                    "3L to 4L",
-                    "4L to 5L",
-                    "Above 5L",
-                ],
+        with top1:
+            st.markdown(
+                """
+                <div class="trip-card">
+                    <h4>Destination</h4>
+                    <p>Tell us where the journey begins and where you want to go.</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
+            origin = st.text_input("Origin city", placeholder="e.g. Chennai")
+            destination_country = st.text_input("Destination country", placeholder="e.g. Thailand")
+            destination_city_region = st.text_input("Destination city / region", placeholder="e.g. Phuket")
 
-        with c3:
+        with top2:
+            st.markdown(
+                """
+                <div class="trip-card">
+                    <h4>Trip basics</h4>
+                    <p>Set the duration, number of travelers, and your overall travel budget.</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            col_a, col_b = st.columns(2)
+            with col_a:
+                days = st.number_input("Number of days", min_value=1, max_value=30, value=4)
+                travelers = st.number_input("Number of travelers", min_value=1, max_value=10, value=2)
+            with col_b:
+                budget = st.selectbox(
+                    "Budget",
+                    [
+                        "Below 50K",
+                        "50K to 1L",
+                        "1L to 2L",
+                        "2L to 3L",
+                        "3L to 4L",
+                        "4L to 5L",
+                        "Above 5L",
+                    ],
+                )
+                budget_scope = st.selectbox("Budget applies to", ["Total trip", "Per person"])
+
+        pref1, pref2 = st.columns(2)
+
+        with pref1:
+            st.markdown(
+                """
+                <div class="trip-card">
+                    <h4>Stay and food</h4>
+                    <p>Choose the comfort level and dining preference that suits your group.</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
             hotel_category = st.selectbox("Hotel preference", ["3-star", "4-star", "5-star"])
             food_preference = st.selectbox("Food preference", ["Veg", "Non-veg", "Both"])
+
+        with pref2:
+            st.markdown(
+                """
+                <div class="trip-card">
+                    <h4>Travel vibe</h4>
+                    <p>Shape the mood of the trip so recommendations feel more personal.</p>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
             travel_style = st.selectbox("Travel style", ["Leisure", "Adventure", "Cultural", "Family", "Mixed"])
+            pace = st.selectbox("Trip pace", ["Relaxed", "Moderate", "Packed"])
 
-        pace = st.selectbox("Trip pace", ["Relaxed", "Moderate", "Packed"])
-        budget_scope = st.selectbox("Budget applies to", ["Total trip", "Per person"])
-        interests = st.multiselect("Interests", ALLOWED_INTERESTS)
+        st.markdown(
+            """
+            <div class="trip-card">
+                <h4>Experiences you want</h4>
+                <p>Select the travel experiences that matter most so the planner can personalize recommendations.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        interests = st.multiselect(
+            "Interests",
+            ALLOWED_INTERESTS,
+            placeholder="Pick the experiences you want most",
+        )
 
-        submitted = st.form_submit_button("Generate travel dashboard", use_container_width=True)
+        submitted = st.form_submit_button("Generate polished travel dashboard", use_container_width=True)
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
     if not submitted:
         return
