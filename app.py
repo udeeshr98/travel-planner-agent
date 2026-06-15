@@ -15,6 +15,20 @@ from ui.dashboard import inject_custom_css, build_dashboard, render_debug_panel
 st.set_page_config(page_title="Travel Planner Agent", page_icon="✈️", layout="wide")
 
 
+COUNTRY_DESTINATION_SUGGESTIONS = {
+    "Thailand": ["Phuket", "Krabi", "Pattaya", "Bangkok", "Chiang Mai", "Koh Samui", "Phi Phi Islands"],
+    "Indonesia": ["Bali", "Ubud", "Jakarta", "Yogyakarta", "Lombok", "Komodo Island"],
+    "Malaysia": ["Kuala Lumpur", "Langkawi", "Penang", "Malacca", "Cameron Highlands", "Kota Kinabalu"],
+    "Singapore": ["Marina Bay", "Sentosa", "Orchard Road", "Chinatown", "Little India"],
+    "Vietnam": ["Da Nang", "Hoi An", "Hanoi", "Ho Chi Minh City", "Ha Long Bay", "Nha Trang"],
+    "Japan": ["Tokyo", "Osaka", "Kyoto", "Nara", "Hokkaido", "Okinawa"],
+    "UAE": ["Dubai", "Abu Dhabi", "Sharjah", "Ras Al Khaimah"],
+    "France": ["Paris", "Nice", "Lyon", "Marseille", "Bordeaux"],
+    "Italy": ["Rome", "Venice", "Florence", "Milan", "Amalfi Coast"],
+    "Switzerland": ["Zurich", "Lucerne", "Interlaken", "Geneva", "Zermatt"],
+}
+
+
 def init_state():
     defaults = {
         "selected_location": None,
@@ -24,10 +38,62 @@ def init_state():
         "location_options": [],
         "pending_profile": None,
         "debug_mode": False,
+        "selected_city_options": [],
+        "selected_cities": [],
+        "country_weather_mode": True,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
+
+
+def get_suggested_destinations(country):
+    if not country:
+        return []
+    normalized_country = country.strip()
+    return COUNTRY_DESTINATION_SUGGESTIONS.get(normalized_country, [])
+
+
+def build_destination_search_query(custom_city_region, selected_cities, destination_country):
+    custom_value = clean_text(custom_city_region)
+    selected_cities = [clean_text(city) for city in selected_cities if clean_text(city)]
+
+    if custom_value:
+        return custom_value
+
+    if selected_cities:
+        if len(selected_cities) == 1:
+            return selected_cities[0]
+        return ", ".join(selected_cities)
+
+    return clean_text(destination_country)
+
+
+def render_selected_destinations_preview(selected_cities, custom_city_region, trip_days):
+    chips = []
+
+    for city in selected_cities:
+        chips.append(f'<span class="pill">{city}</span>')
+
+    custom_value = clean_text(custom_city_region)
+    if custom_value:
+        chips.append(f'<span class="pill">{custom_value}</span>')
+
+    if chips:
+        st.markdown("**Chosen destinations of interest**")
+        st.markdown("".join(chips), unsafe_allow_html=True)
+
+    if selected_cities or custom_value:
+        joined_places = ", ".join(selected_cities + ([custom_value] if custom_value else []))
+        st.markdown(
+            f"""
+            <div class="info-banner">
+                <strong>Planner note</strong><br>
+                The travel planner will use your {trip_days}-day trip, selected destinations, interests, and travel pace to recommend how the itinerary can be split across {joined_places}. You do not need to manually assign 1 day here and 2 days there — the planner will suggest that for you.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 
 def collect_profile_form():
@@ -35,11 +101,11 @@ def collect_profile_form():
         """
         <div class="planner-hero">
             <h2>Design your next trip</h2>
-            <p>Build a smarter travel plan with destination research, hotel ideas, food suggestions, local transport guidance, and practical safety notes.</p>
+            <p>Choose a country, explore destination ideas inside it, and let the planner recommend how to distribute your days across the best places.</p>
             <div class="planner-hero-badges">
-                <span class="planner-badge">Smart destination research</span>
-                <span class="planner-badge">Hotel + food matching</span>
-                <span class="planner-badge">Client-ready dashboard</span>
+                <span class="planner-badge">Country-based suggestions</span>
+                <span class="planner-badge">Multi-city trip planning</span>
+                <span class="planner-badge">Planner-led itinerary split</span>
             </div>
         </div>
         """,
@@ -49,10 +115,10 @@ def collect_profile_form():
     st.markdown(
         """
         <div class="quick-chip-row">
-            <div class="quick-chip"><span class="label">Trip style</span><span class="value">Modern planner</span></div>
-            <div class="quick-chip"><span class="label">Experience</span><span class="value">Travel-focused UI</span></div>
-            <div class="quick-chip"><span class="label">Output</span><span class="value">Dashboard report</span></div>
-            <div class="quick-chip"><span class="label">Best for</span><span class="value">Leisure trips</span></div>
+            <div class="quick-chip"><span class="label">Planner style</span><span class="value">Smart itinerary</span></div>
+            <div class="quick-chip"><span class="label">Destination mode</span><span class="value">Country → cities</span></div>
+            <div class="quick-chip"><span class="label">Weather mode</span><span class="value">Country overview</span></div>
+            <div class="quick-chip"><span class="label">Output</span><span class="value">Day-wise dashboard</span></div>
         </div>
         """,
         unsafe_allow_html=True,
@@ -62,7 +128,7 @@ def collect_profile_form():
     st.markdown('<div class="section-kicker">Trip planner</div>', unsafe_allow_html=True)
     st.markdown("## Plan your travel inputs")
     st.markdown(
-        '<div class="form-caption">Enter the core details below and the app will turn them into a polished travel dashboard.</div>',
+        '<div class="form-caption">Tell the planner the country, your travel preferences, and the places you are considering. The app will suggest how to split the itinerary across them.</div>',
         unsafe_allow_html=True,
     )
 
@@ -73,22 +139,21 @@ def collect_profile_form():
             st.markdown(
                 """
                 <div class="trip-card">
-                    <h4>Destination</h4>
-                    <p>Tell us where the journey begins and where you want to go.</p>
+                    <h4>Destination setup</h4>
+                    <p>Start with the country first, then optionally choose one or more cities or regions you are interested in.</p>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
             origin = st.text_input("Origin city", placeholder="e.g. Chennai")
             destination_country = st.text_input("Destination country", placeholder="e.g. Thailand")
-            destination_city_region = st.text_input("Destination city / region", placeholder="e.g. Phuket")
 
         with top2:
             st.markdown(
                 """
                 <div class="trip-card">
                     <h4>Trip basics</h4>
-                    <p>Set the duration, number of travelers, and your overall travel budget.</p>
+                    <p>Set the duration, number of travelers, and your overall budget so the planner can shape a practical trip.</p>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -112,6 +177,32 @@ def collect_profile_form():
                 )
                 budget_scope = st.selectbox("Budget applies to", ["Total trip", "Per person"])
 
+        suggested_destinations = get_suggested_destinations(destination_country)
+
+        st.markdown(
+            """
+            <div class="trip-card">
+                <h4>Suggested destinations inside the country</h4>
+                <p>Select one or more places you are considering. The planner will later recommend how to distribute your trip across them.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        selected_cities = st.multiselect(
+            "Suggested cities / regions",
+            options=suggested_destinations,
+            default=[],
+            placeholder="Select one or more destination ideas",
+        )
+
+        custom_city_region = st.text_input(
+            "Custom city / region (optional)",
+            placeholder="e.g. Phi Phi Islands, Ao Nang, or any place not listed above",
+        )
+
+        render_selected_destinations_preview(selected_cities, custom_city_region, days)
+
         pref1, pref2 = st.columns(2)
 
         with pref1:
@@ -119,7 +210,7 @@ def collect_profile_form():
                 """
                 <div class="trip-card">
                     <h4>Stay and food</h4>
-                    <p>Choose the comfort level and dining preference that suits your group.</p>
+                    <p>Choose your hotel comfort level and dining preference.</p>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -132,7 +223,7 @@ def collect_profile_form():
                 """
                 <div class="trip-card">
                     <h4>Travel vibe</h4>
-                    <p>Shape the mood of the trip so recommendations feel more personal.</p>
+                    <p>Define the kind of trip the planner should optimize for.</p>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -144,7 +235,7 @@ def collect_profile_form():
             """
             <div class="trip-card">
                 <h4>Experiences you want</h4>
-                <p>Select the travel experiences that matter most so the planner can personalize recommendations.</p>
+                <p>These interests help the planner decide what kinds of cities and attractions deserve more time in your itinerary.</p>
             </div>
             """,
             unsafe_allow_html=True,
@@ -165,26 +256,34 @@ def collect_profile_form():
     errors = []
     origin = clean_text(origin)
     destination_country = clean_text(destination_country)
-    destination_city_region = clean_text(destination_city_region)
+    custom_city_region = clean_text(custom_city_region)
 
     if not origin:
         errors.append("Origin city is required.")
     if not destination_country:
         errors.append("Destination country is required.")
-    if not destination_city_region:
-        errors.append("Destination city / region is required.")
     if not interests:
         errors.append("Please select at least one interest.")
+    if not selected_cities and not custom_city_region:
+        errors.append("Please select at least one suggested destination or enter a custom city / region.")
 
     if errors:
         for error in errors:
             st.error(error)
         return
 
+    destination_search_query = build_destination_search_query(
+        custom_city_region=custom_city_region,
+        selected_cities=selected_cities,
+        destination_country=destination_country,
+    )
+
     parsed_profile = {
         "origin": origin,
         "destination_country": destination_country,
-        "destination_city_region": destination_city_region,
+        "destination_city_region": destination_search_query,
+        "selected_cities": selected_cities,
+        "custom_city_region": custom_city_region,
         "days": int(days),
         "travelers": int(travelers),
         "budget": budget,
@@ -194,6 +293,8 @@ def collect_profile_form():
         "travel_style": travel_style,
         "pace": pace,
         "interests": interests,
+        "planner_mode": "multi_city_recommended_split",
+        "weather_preference": "country_overview_then_city_planning",
     }
 
     try:
@@ -201,7 +302,7 @@ def collect_profile_form():
             location_options = get_location_options(parsed_profile["destination_city_region"])
 
         if not location_options:
-            st.warning("Could not find destination details. Try a more specific city or region.")
+            st.warning("Could not find destination details. Try selecting a different suggested destination or enter a more specific city / region.")
             return
 
         filtered_options = []
@@ -217,6 +318,8 @@ def collect_profile_form():
 
         st.session_state.pending_profile = parsed_profile
         st.session_state.location_options = filtered_options
+        st.session_state.selected_city_options = selected_cities
+        st.session_state.selected_cities = selected_cities
         st.session_state.generated_report = None
         st.session_state.selected_location = None
         st.rerun()
@@ -237,27 +340,49 @@ def render_location_picker_and_generate():
         for loc in options
     ]
 
-    selected_label = st.selectbox("Select the correct destination", labels, key="destination_selector")
+    selected_label = st.selectbox("Select the primary anchor destination", labels, key="destination_selector")
     selected_location = options[labels.index(selected_label)]
 
-    c1, c2 = st.columns([1.2, 1])
+    chosen_cities = st.session_state.pending_profile.get("selected_cities", [])
+    custom_city_region = st.session_state.pending_profile.get("custom_city_region", "")
+
+    c1, c2 = st.columns([1.25, 1])
 
     with c1:
+        selected_places_html = "".join([f'<span class="pill">{city}</span>' for city in chosen_cities])
+        if custom_city_region:
+            selected_places_html += f'<span class="pill">{custom_city_region}</span>'
+
         st.markdown(
             f"""
             <div class="info-banner">
-                <strong>Selected location</strong><br>
+                <strong>Primary anchor destination</strong><br>
                 {selected_location.get("name")}, {selected_location.get("country")}<br>
                 <span class="muted">Timezone: {selected_location.get("timezone")} • Lat: {selected_location.get("latitude")} • Lon: {selected_location.get("longitude")}</span>
+                <div class="divider-space"></div>
+                <strong>Trip planning mode</strong><br>
+                The planner will use this location as the anchor and recommend how to distribute your trip across the selected destinations.
+                <div class="divider-space"></div>
+                {selected_places_html if selected_places_html else '<span class="muted">No secondary destinations selected.</span>'}
             </div>
             """,
             unsafe_allow_html=True,
         )
 
     with c2:
+        st.markdown(
+            """
+            <div class="info-banner">
+                <strong>Output style</strong><br>
+                You do not need to manually assign one day here and one day there. The planner will recommend the itinerary split, along with overall country weather, best season, and city-specific attraction and stay guidance.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
         if st.button("Build dashboard", use_container_width=True):
             try:
-                with st.spinner("Gathering weather, live research, and personalized recommendations..."):
+                with st.spinner("Gathering country weather, live research, and personalized itinerary recommendations..."):
                     weather = get_weather_details(
                         selected_location.get("latitude"),
                         selected_location.get("longitude"),
@@ -305,7 +430,7 @@ def main():
         """
         <div class="app-hero">
             <h1>✈️ Travel Planner Agent</h1>
-            <p>Generate a polished, client-ready travel dashboard with destination insights, stay suggestions, places to visit, food, transport, and safety guidance.</p>
+            <p>Generate a polished, client-ready travel dashboard with destination insights, planner-led itinerary ideas, stay suggestions, attractions, food, transport, and safety guidance.</p>
         </div>
         """,
         unsafe_allow_html=True,
@@ -321,7 +446,7 @@ def main():
             """
             <div class="info-banner">
                 <strong>How this view works</strong><br>
-                Fill in the trip details, confirm the destination, and generate the dashboard. The final output is shown as a tabbed travel planner UI instead of raw JSON, while research sources remain hidden unless opened.
+                Choose a country, select one or more destinations you are considering, and generate the dashboard. The planner will recommend how the trip can be split across the chosen places, while also showing overall weather guidance and city-level planning ideas.
             </div>
             """,
             unsafe_allow_html=True,
