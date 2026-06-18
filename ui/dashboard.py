@@ -1,6 +1,10 @@
 import streamlit as st
 
 
+# ---------------------------------------------------------------------------
+# CSS
+# ---------------------------------------------------------------------------
+
 def inject_custom_css():
     st.markdown(
         """
@@ -211,6 +215,69 @@ def inject_custom_css():
             margin-bottom: 0.35rem;
         }
 
+        .city-header {
+            background: linear-gradient(135deg, #1e293b 0%, #1d4ed8 100%);
+            color: white;
+            border-radius: 16px;
+            padding: 0.85rem 1.1rem;
+            margin-bottom: 1rem;
+            margin-top: 0.5rem;
+        }
+
+        .city-header h3 {
+            margin: 0 0 0.2rem 0;
+            font-size: 1.25rem;
+            font-weight: 800;
+        }
+
+        .city-header p {
+            margin: 0;
+            font-size: 0.88rem;
+            color: rgba(255,255,255,0.82);
+        }
+
+        .country-header {
+            background: linear-gradient(135deg, #064e3b 0%, #065f46 100%);
+            color: white;
+            border-radius: 16px;
+            padding: 0.85rem 1.1rem;
+            margin-bottom: 1rem;
+            margin-top: 0.5rem;
+        }
+
+        .country-header h3 {
+            margin: 0 0 0.2rem 0;
+            font-size: 1.15rem;
+            font-weight: 800;
+        }
+
+        .country-header p {
+            margin: 0;
+            font-size: 0.88rem;
+            color: rgba(255,255,255,0.82);
+        }
+
+        .intercity-route-card {
+            border: 1px solid rgba(148, 163, 184, 0.25);
+            border-radius: 14px;
+            padding: 0.85rem 1rem;
+            background: white;
+            margin-bottom: 0.75rem;
+            box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
+        }
+
+        .intercity-route-card .route-title {
+            font-weight: 800;
+            color: #0f172a;
+            font-size: 1rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .intercity-route-card .route-meta {
+            color: #475569;
+            font-size: 0.88rem;
+        }
+
         .recommendation-card {
             border: 1px solid rgba(148, 163, 184, 0.25);
             border-radius: 18px;
@@ -303,6 +370,10 @@ def inject_custom_css():
     )
 
 
+# ---------------------------------------------------------------------------
+# Reusable UI helpers
+# ---------------------------------------------------------------------------
+
 def pill_row(items):
     if not items:
         st.write("—")
@@ -311,10 +382,55 @@ def pill_row(items):
     st.markdown(html, unsafe_allow_html=True)
 
 
+def render_card(title, subtitle, body, pills=None):
+    st.markdown(
+        f'<div class="recommendation-card"><h4>{title}</h4><div class="recommendation-meta">{subtitle}</div><div class="recommendation-body">{body}</div></div>',
+        unsafe_allow_html=True,
+    )
+    if pills:
+        pill_row(pills)
+
+
+def render_popover_details(button_label, lines):
+    with st.popover(button_label):
+        for line in lines:
+            st.write(f"- {line}")
+
+
+def city_header(city, fit_summary=""):
+    st.markdown(
+        f"""
+        <div class="city-header">
+            <h3>{city}</h3>
+            <p>{fit_summary if fit_summary else "City-specific recommendations below."}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def country_section_header(label, note=""):
+    st.markdown(
+        f"""
+        <div class="country-header">
+            <h3>{label}</h3>
+            <p>{note}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Summary cards row
+# ---------------------------------------------------------------------------
+
 def render_summary_cards(report):
     destination = report["destination_context"]
     traveler = report["traveler_profile"]
     weather = report["weather_summary"]
+    all_cities = destination.get("all_cities", [destination.get("anchor_city", "—")])
+    cities_display = " + ".join(all_cities) if all_cities else destination.get("anchor_city", "—")
 
     c1, c2, c3, c4 = st.columns(4)
 
@@ -322,9 +438,9 @@ def render_summary_cards(report):
         st.markdown(
             f"""
             <div class="summary-card">
-                <div class="label">Destination</div>
-                <div class="value">{destination["city"]}, {destination["country"]}</div>
-                <div class="sub">{traveler["days"]} days • {traveler["travelers"]} traveler(s)<br>{destination["timezone"]}</div>
+                <div class="label">Destinations</div>
+                <div class="value">{cities_display}</div>
+                <div class="sub">{destination.get("country", "")} • {traveler["days"]} days • {traveler["travelers"]} traveler(s)</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -348,7 +464,7 @@ def render_summary_cards(report):
             <div class="summary-card">
                 <div class="label">Budget fit</div>
                 <div class="value">{traveler["budget"]}</div>
-                <div class="sub">Hotel preference: {traveler["hotel_category"]}<br>Food preference: {traveler["food_preference"]}</div>
+                <div class="sub">Hotel: {traveler["hotel_category"]}<br>Food: {traveler["food_preference"]}</div>
             </div>
             """,
             unsafe_allow_html=True,
@@ -368,44 +484,43 @@ def render_summary_cards(report):
         )
 
 
-def render_card(title, subtitle, body, pills=None):
-    st.markdown(
-        f'<div class="recommendation-card"><h4>{title}</h4><div class="recommendation-meta">{subtitle}</div><div class="recommendation-body">{body}</div></div>',
-        unsafe_allow_html=True,
-    )
-    if pills:
-        pill_row(pills)
-
-
-def render_popover_details(button_label, lines):
-    with st.popover(button_label):
-        for line in lines:
-            st.write(f"- {line}")
-
+# ---------------------------------------------------------------------------
+# Overview tab  (country context: climate + quick signals)
+# ---------------------------------------------------------------------------
 
 def render_overview_tab(report):
     final_report = report["final_report"]
-    snapshot = final_report["destination_snapshot"]
+    country_context = final_report.get("country_context", {})
     weather = report["weather_summary"]
     traveler = report["traveler_profile"]
+    all_cities = report["destination_context"].get("all_cities", [])
+    country = report["destination_context"].get("country", "")
 
     left, right = st.columns([1.45, 1])
 
     with left:
         st.markdown('<div class="section-title">Trip overview</div>', unsafe_allow_html=True)
+        season = country_context.get("best_season_climate", {})
         st.markdown(
             f"""
             <div class="info-banner">
-                <strong>Why this destination works:</strong><br>
-                {snapshot.get("summary", "No summary available.")}
+                <strong>Best season and climate for {country}:</strong><br>
+                {season.get("summary", "No climate summary available.")}
                 <div class="divider-space"></div>
-                <span class="muted">{snapshot.get("traveler_fit", "")}</span>
+                <span class="muted">Climate note: {season.get("climate_notes", "")}</span>
             </div>
             """,
             unsafe_allow_html=True,
         )
-        st.markdown("**Trip themes**")
-        pill_row(snapshot.get("key_characteristics", []))
+
+        best_months = season.get("best_months_to_visit", [])
+        months_avoid = season.get("months_to_avoid", [])
+        if best_months:
+            st.markdown("**Best months to visit**")
+            pill_row(best_months)
+        if months_avoid:
+            st.markdown("**Months to avoid**")
+            pill_row(months_avoid)
 
         st.markdown('<div class="section-title">Quick plan signals</div>', unsafe_allow_html=True)
         a, b, c = st.columns(3)
@@ -414,197 +529,312 @@ def render_overview_tab(report):
         b.caption(weather["weather_description"])
         c.metric("Activity fit", weather["activity_suitability"])
 
+        st.markdown('<div class="section-title">Cities on this trip</div>', unsafe_allow_html=True)
+        city_intel = final_report.get("city_intel", {})
+        for city in all_cities:
+            fit = city_intel.get(city, {}).get("city_fit_summary", "")
+            st.markdown(
+                f"""
+                <div class="info-banner">
+                    <strong>{city}</strong><br>
+                    <span class="muted">{fit if fit else "City details available in the tabs below."}</span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
     with right:
-        st.markdown('<div class="section-title">Weather and planning</div>', unsafe_allow_html=True)
-        weather_block = final_report["weather_climate"]
+        st.markdown('<div class="section-title">Visa and entry</div>', unsafe_allow_html=True)
+        visa = country_context.get("visa_entry", {})
         render_card(
-            "Today’s conditions",
-            f'{weather["temperature_now_c"]}°C • {weather["weather_description"]} • Wind {weather["wind_speed_kmh"]} km/h',
-            weather_block.get("summary", "No weather summary available."),
-            pills=[weather["temperature_feel"], weather["wind_feel"], weather_block.get("comfort_level", "Moderate")],
+            f"Entry requirements for {country}",
+            f'Visa on arrival: {visa.get("visa_on_arrival", "Check before travel")} • Duration: {visa.get("duration_allowed", "Varies")}',
+            visa.get("summary", "No visa information available."),
         )
-        if weather_block.get("planning_advice"):
-            render_popover_details("View planning advice", weather_block.get("planning_advice"))
+        if visa.get("key_requirements"):
+            render_popover_details("View entry requirements", visa.get("key_requirements", []))
 
-        tradeoffs = final_report.get("planning_tradeoffs", [])
-        if tradeoffs:
-            st.markdown('<div class="section-title">Planning trade-offs</div>', unsafe_allow_html=True)
-            for item in tradeoffs:
-                render_card(
-                    item.get("topic", "Trade-off"),
-                    "Decision lens",
-                    f'{item.get("tradeoff", "")} {item.get("who_should_choose_this", "")}',
-                )
+        st.markdown('<div class="section-title">Weather today</div>', unsafe_allow_html=True)
+        render_card(
+            "Current conditions",
+            f'{weather["temperature_now_c"]}°C • {weather["weather_description"]} • Wind {weather["wind_speed_kmh"]} km/h',
+            f'Feels {weather["temperature_feel"].lower()}. {weather["activity_suitability"]}.',
+            pills=[weather["temperature_feel"], weather["wind_feel"]],
+        )
 
+
+# ---------------------------------------------------------------------------
+# Stay tab  (city-wise areas + hotels)
+# ---------------------------------------------------------------------------
 
 def render_stay_tab(report):
     final_report = report["final_report"]
-    areas = final_report.get("best_areas_to_stay", [])
-    hotels = final_report.get("hotel_recommendations", [])
+    city_intel = final_report.get("city_intel", {})
+    all_cities = report["destination_context"].get("all_cities", [])
 
-    st.markdown('<div class="section-title">Best areas to stay</div>', unsafe_allow_html=True)
-    if not areas:
-        st.info("No area recommendations available.")
-    else:
-        for area in areas:
-            col1, col2 = st.columns([3.1, 1])
-            with col1:
-                render_card(
-                    area.get("area_name", "Area"),
-                    f'Budget fit: {area.get("budget_fit", "Unknown")} • Sentiment: {area.get("traveler_sentiment", "Unknown")}',
-                    area.get("why_recommended", ""),
-                    pills=area.get("best_for", []),
-                )
-            with col2:
-                detail_lines = []
-                for item in area.get("pros", []):
-                    detail_lines.append(f"Pro: {item}")
-                for item in area.get("cons", []):
-                    detail_lines.append(f"Con: {item}")
-                if area.get("connectivity_notes"):
-                    detail_lines.append(f"Connectivity: {area.get('connectivity_notes')}")
-                render_popover_details("View details", detail_lines or ["No extra details available."])
+    if not all_cities:
+        st.info("No city data available.")
+        return
 
-    st.markdown('<div class="section-title">Suggested hotels</div>', unsafe_allow_html=True)
-    if not hotels:
-        st.info("No hotel suggestions available.")
-    else:
-        cols = st.columns(2)
-        for idx, hotel in enumerate(hotels):
-            with cols[idx % 2]:
-                render_card(
-                    hotel.get("hotel_name", "Hotel"),
-                    f'{hotel.get("area", "Unknown area")} • {hotel.get("pricing_note", "Pricing not available")}',
-                    hotel.get("why_it_matches", ""),
-                    pills=[hotel.get("hotel_category", ""), hotel.get("budget_fit", "")],
-                )
-                detail_lines = []
-                for item in hotel.get("review_highlights", []):
-                    detail_lines.append(f"Review highlight: {item}")
-                for item in hotel.get("cautions", []):
-                    detail_lines.append(f"Caution: {item}")
-                if hotel.get("location_logic"):
-                    detail_lines.append(f"Location logic: {hotel.get('location_logic')}")
-                render_popover_details("Open hotel details", detail_lines or ["No extra hotel details available."])
+    for city in all_cities:
+        city_data = city_intel.get(city, {})
+        city_header(city, city_data.get("city_fit_summary", ""))
 
+        areas = city_data.get("best_areas_to_stay", [])
+        hotels = city_data.get("hotel_recommendations", [])
+
+        st.markdown(f'<div class="section-title">Best areas to stay in {city}</div>', unsafe_allow_html=True)
+        if not areas:
+            st.info(f"No area recommendations available for {city}.")
+        else:
+            for area in areas:
+                col1, col2 = st.columns([3.1, 1])
+                with col1:
+                    render_card(
+                        area.get("area_name", "Area"),
+                        f'Budget fit: {area.get("budget_fit", "Unknown")} • Sentiment: {area.get("traveler_sentiment", "Unknown")}',
+                        area.get("why_recommended", ""),
+                        pills=area.get("best_for", []),
+                    )
+                with col2:
+                    detail_lines = []
+                    for item in area.get("pros", []):
+                        detail_lines.append(f"Pro: {item}")
+                    for item in area.get("cons", []):
+                        detail_lines.append(f"Con: {item}")
+                    if area.get("connectivity_notes"):
+                        detail_lines.append(f"Connectivity: {area.get('connectivity_notes')}")
+                    render_popover_details("View details", detail_lines or ["No extra details available."])
+
+        st.markdown(f'<div class="section-title">Suggested hotels in {city}</div>', unsafe_allow_html=True)
+        if not hotels:
+            st.info(f"No hotel suggestions available for {city}.")
+        else:
+            cols = st.columns(2)
+            for idx, hotel in enumerate(hotels):
+                with cols[idx % 2]:
+                    render_card(
+                        hotel.get("hotel_name", "Hotel"),
+                        f'{hotel.get("area", "Unknown area")} • {hotel.get("pricing_note", "Pricing not available")}',
+                        hotel.get("why_it_matches", ""),
+                        pills=[hotel.get("hotel_category", ""), hotel.get("budget_fit", "")],
+                    )
+                    detail_lines = []
+                    for item in hotel.get("review_highlights", []):
+                        detail_lines.append(f"Review highlight: {item}")
+                    for item in hotel.get("cautions", []):
+                        detail_lines.append(f"Caution: {item}")
+                    if hotel.get("location_logic"):
+                        detail_lines.append(f"Location logic: {hotel.get('location_logic')}")
+                    render_popover_details("Open hotel details", detail_lines or ["No extra hotel details available."])
+
+        st.divider()
+
+
+# ---------------------------------------------------------------------------
+# Places tab  (city-wise must-visit + interest-matched)
+# ---------------------------------------------------------------------------
 
 def render_places_tab(report):
     final_report = report["final_report"]
-    places = final_report.get("must_visit_places", [])
-    interests = final_report.get("suggested_places_by_interest", [])
+    city_intel = final_report.get("city_intel", {})
+    all_cities = report["destination_context"].get("all_cities", [])
 
-    st.markdown('<div class="section-title">Must-visit places</div>', unsafe_allow_html=True)
-    if not places:
-        st.info("No must-visit places available.")
-    else:
-        cols = st.columns(2)
-        for idx, place in enumerate(places):
-            with cols[idx % 2]:
-                render_card(
-                    place.get("name", "Place"),
-                    f'{place.get("category", "Place")} • {place.get("time_needed", "Time not available")}',
-                    place.get("why_visit", ""),
-                    pills=place.get("best_for", []),
-                )
-                details = [
-                    f"Best time to visit: {place.get('best_time_to_visit', 'Not specified')}",
-                    f"Weather sensitivity: {place.get('weather_sensitivity', 'Moderate')}",
-                ]
-                render_popover_details("View place details", details)
+    if not all_cities:
+        st.info("No city data available.")
+        return
 
-    st.markdown('<div class="section-title">Matched to your interests</div>', unsafe_allow_html=True)
-    if not interests:
-        st.info("No personalized place suggestions available.")
-    else:
-        for item in interests:
-            col1, col2 = st.columns([3.2, 1])
-            with col1:
-                render_card(
-                    item.get("name", "Suggestion"),
-                    f'Interest match: {item.get("matched_interest", "General")} • {item.get("indoor_outdoor", "Mixed")}',
-                    item.get("why_suggested", ""),
-                )
-            with col2:
-                render_popover_details(
-                    "Open details",
-                    [f"Recommended time: {item.get('time_needed', 'Not specified')}"],
-                )
+    for city in all_cities:
+        city_data = city_intel.get(city, {})
+        city_header(city, city_data.get("city_fit_summary", ""))
 
+        places = city_data.get("must_visit_places", [])
+        interests = city_data.get("suggested_places_by_interest", [])
+
+        st.markdown(f'<div class="section-title">Must-visit places in {city}</div>', unsafe_allow_html=True)
+        if not places:
+            st.info(f"No must-visit places available for {city}.")
+        else:
+            cols = st.columns(2)
+            for idx, place in enumerate(places):
+                with cols[idx % 2]:
+                    render_card(
+                        place.get("name", "Place"),
+                        f'{place.get("category", "Place")} • {place.get("time_needed", "Time not available")}',
+                        place.get("why_visit", ""),
+                        pills=place.get("best_for", []),
+                    )
+                    details = [
+                        f"Best time to visit: {place.get('best_time_to_visit', 'Not specified')}",
+                        f"Weather sensitivity: {place.get('weather_sensitivity', 'Moderate')}",
+                    ]
+                    render_popover_details("View place details", details)
+
+        st.markdown(f'<div class="section-title">Matched to your interests in {city}</div>', unsafe_allow_html=True)
+        if not interests:
+            st.info(f"No personalized suggestions available for {city}.")
+        else:
+            for item in interests:
+                col1, col2 = st.columns([3.2, 1])
+                with col1:
+                    render_card(
+                        item.get("name", "Suggestion"),
+                        f'Interest match: {item.get("matched_interest", "General")} • {item.get("indoor_outdoor", "Mixed")}',
+                        item.get("why_suggested", ""),
+                    )
+                with col2:
+                    render_popover_details(
+                        "Open details",
+                        [f"Recommended time: {item.get('time_needed', 'Not specified')}"],
+                    )
+
+        st.divider()
+
+
+# ---------------------------------------------------------------------------
+# Food tab  (city-wise food recommendations)
+# ---------------------------------------------------------------------------
 
 def render_food_tab(report):
     final_report = report["final_report"]
-    items = final_report.get("food_recommendations", [])
+    city_intel = final_report.get("city_intel", {})
+    all_cities = report["destination_context"].get("all_cities", [])
 
-    st.markdown('<div class="section-title">Food recommendations</div>', unsafe_allow_html=True)
+    if not all_cities:
+        st.info("No city data available.")
+        return
+
     st.markdown(
-        '<div class="mini-note">Compact recommendations on the main screen, with extra detail hidden behind popovers.</div>',
+        '<div class="mini-note">Food suggestions are city-specific and matched to your food preference. Tap a card for dish details.</div>',
         unsafe_allow_html=True,
     )
 
-    if not items:
-        st.info("No food suggestions available.")
-    else:
-        cols = st.columns(2)
-        for idx, item in enumerate(items):
-            with cols[idx % 2]:
-                render_card(
-                    item.get("place_name", "Restaurant"),
-                    f'{item.get("cuisine", "Cuisine")} • {item.get("area", "Area not specified")}',
-                    item.get("why_recommended", ""),
-                    pills=[item.get("price_level", ""), item.get("vibe", "")],
-                )
-                details = []
-                for sig in item.get("signature_items", []):
-                    details.append(f"Try: {sig}")
-                if item.get("notes"):
-                    details.append(f"Note: {item.get('notes')}")
-                render_popover_details("Open food details", details or ["No extra food details available."])
+    for city in all_cities:
+        city_data = city_intel.get(city, {})
+        city_header(city, city_data.get("city_fit_summary", ""))
 
+        items = city_data.get("food_recommendations", [])
+        st.markdown(f'<div class="section-title">Food recommendations in {city}</div>', unsafe_allow_html=True)
+
+        if not items:
+            st.info(f"No food suggestions available for {city}.")
+        else:
+            cols = st.columns(2)
+            for idx, item in enumerate(items):
+                with cols[idx % 2]:
+                    render_card(
+                        item.get("place_name", "Restaurant"),
+                        f'{item.get("cuisine", "Cuisine")} • {item.get("area", "Area not specified")}',
+                        item.get("why_recommended", ""),
+                        pills=[item.get("price_level", ""), item.get("vibe", "")],
+                    )
+                    details = []
+                    for sig in item.get("signature_items", []):
+                        details.append(f"Try: {sig}")
+                    if item.get("notes"):
+                        details.append(f"Note: {item.get('notes')}")
+                    render_popover_details("Open food details", details or ["No extra food details available."])
+
+        st.divider()
+
+
+# ---------------------------------------------------------------------------
+# Transport tab  (city-wise local transport + inter-city routes)
+# ---------------------------------------------------------------------------
 
 def render_transport_tab(report):
     final_report = report["final_report"]
-    transport = final_report.get("local_transport", {})
+    city_intel = final_report.get("city_intel", {})
+    country_context = final_report.get("country_context", {})
+    all_cities = report["destination_context"].get("all_cities", [])
+    country = report["destination_context"].get("country", "")
 
-    left, right = st.columns([1.15, 1])
-
-    with left:
-        st.markdown('<div class="section-title">Getting around</div>', unsafe_allow_html=True)
-        render_card(
-            "Transport overview",
-            "How to move around the destination",
-            transport.get("summary", "No transport summary available."),
-            pills=transport.get("common_modes", []),
+    # Inter-city transport section
+    intercity = country_context.get("intercity_transport", {})
+    if intercity:
+        country_section_header(
+            f"Getting between cities in {country}",
+            intercity.get("summary", ""),
         )
-        if transport.get("best_options_for_tourists"):
-            st.markdown("**Best options for tourists**")
-            pill_row(transport.get("best_options_for_tourists", []))
 
-    with right:
-        st.markdown('<div class="section-title">Practical transport details</div>', unsafe_allow_html=True)
-        detail_lines = []
-        for note in transport.get("cost_notes", []):
-            detail_lines.append(f"Cost note: {note}")
-        for tip in transport.get("practical_tips", []):
-            detail_lines.append(f"Tip: {tip}")
-        if transport.get("area_connectivity"):
-            detail_lines.append(f"Connectivity: {transport.get('area_connectivity')}")
-        if detail_lines:
-            with st.expander("Open transport details"):
-                for line in detail_lines:
-                    st.write(f"- {line}")
-        else:
-            st.info("No extra transport details available.")
+        routes = intercity.get("routes", [])
+        if routes:
+            st.markdown('<div class="section-title">Route options</div>', unsafe_allow_html=True)
+            for route in routes:
+                from_c = route.get("from_city", "")
+                to_c = route.get("to_city", "")
+                options = route.get("options", [])
+                duration = route.get("estimated_duration", "")
+                cost = route.get("cost_estimate", "")
+                recommended = route.get("recommended_mode", "")
+                st.markdown(
+                    f"""
+                    <div class="intercity-route-card">
+                        <div class="route-title">{from_c} to {to_c}</div>
+                        <div class="route-meta">Duration: {duration} &nbsp;|&nbsp; Cost: {cost} &nbsp;|&nbsp; Recommended: {recommended}</div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                if options:
+                    pill_row(options)
+        if intercity.get("practical_tips"):
+            render_popover_details("View intercity transport tips", intercity.get("practical_tips", []))
 
+        st.divider()
+
+    # City-level local transport
+    st.markdown('<div class="section-title">Local transport by city</div>', unsafe_allow_html=True)
+    for city in all_cities:
+        city_data = city_intel.get(city, {})
+        city_header(city, city_data.get("city_fit_summary", ""))
+        transport = city_data.get("local_transport", {})
+
+        left, right = st.columns([1.15, 1])
+
+        with left:
+            render_card(
+                f"Getting around {city}",
+                "Local transport options",
+                transport.get("summary", f"No transport summary available for {city}."),
+                pills=transport.get("common_modes", []),
+            )
+            if transport.get("best_options_for_tourists"):
+                st.markdown("**Best options for tourists**")
+                pill_row(transport.get("best_options_for_tourists", []))
+
+        with right:
+            detail_lines = []
+            for note in transport.get("cost_notes", []):
+                detail_lines.append(f"Cost note: {note}")
+            for tip in transport.get("practical_tips", []):
+                detail_lines.append(f"Tip: {tip}")
+            if detail_lines:
+                with st.expander(f"Open {city} transport details"):
+                    for line in detail_lines:
+                        st.write(f"- {line}")
+            else:
+                st.info(f"No extra transport details available for {city}.")
+
+        st.divider()
+
+
+# ---------------------------------------------------------------------------
+# Safety tab  (country-level safety + etiquette)
+# ---------------------------------------------------------------------------
 
 def render_safety_tab(report):
     final_report = report["final_report"]
-    safety = final_report.get("safety_and_cautions", {})
-    culture = final_report.get("culture_etiquette", {})
+    country_context = final_report.get("country_context", {})
+    country = report["destination_context"].get("country", "")
+
+    safety = country_context.get("country_safety", {})
+    culture = country_context.get("country_etiquette", {})
 
     left, right = st.columns(2)
 
     with left:
-        st.markdown('<div class="section-title">Safety guidance</div>', unsafe_allow_html=True)
+        country_section_header(f"Safety guidance for {country}", "Country-level travel safety awareness.")
         render_card(
             "Visitor safety",
             "Practical travel awareness",
@@ -616,17 +846,15 @@ def render_safety_tab(report):
             detail_lines.append(f"Caution area: {item}")
         for item in safety.get("common_issues", []):
             detail_lines.append(f"Common issue: {item}")
-        for item in safety.get("transport_cautions", []):
-            detail_lines.append(f"Transport caution: {item}")
-        for item in safety.get("food_hygiene_notes", []):
-            detail_lines.append(f"Food hygiene: {item}")
+        if safety.get("emergency_numbers"):
+            detail_lines.append(f"Emergency numbers: {safety.get('emergency_numbers')}")
         render_popover_details("Open safety details", detail_lines or ["No additional safety notes available."])
 
     with right:
-        st.markdown('<div class="section-title">Culture and etiquette</div>', unsafe_allow_html=True)
+        country_section_header(f"Culture and etiquette in {country}", "Helpful behavior cues for visitors.")
         render_card(
             "Local etiquette",
-            "Helpful behavior cues for visitors",
+            "Social norms and customs",
             culture.get("people_and_social_norms", "No culture note available."),
         )
         etiquette_lines = []
@@ -643,47 +871,69 @@ def render_safety_tab(report):
         render_popover_details("Open etiquette details", etiquette_lines or ["No etiquette details available."])
 
 
+# ---------------------------------------------------------------------------
+# Sources tab
+# ---------------------------------------------------------------------------
+
 def render_sources(report):
     research = report.get("research_summary", {})
+    final_report = report.get("final_report", {})
+    city_intel = final_report.get("city_intel", {})
+    country_research = final_report.get("country_context", {})
+    all_cities = report["destination_context"].get("all_cities", [])
+
     st.markdown('<div class="section-title">Research sources</div>', unsafe_allow_html=True)
     st.markdown(
-        '<div class="mini-note">These are hidden by default so the main screen stays client-friendly.</div>',
+        '<div class="mini-note">Sources used to build the research context for this trip.</div>',
         unsafe_allow_html=True,
     )
 
-    with st.expander("Open web research sources"):
-        top_web = research.get("top_web_sources", {})
-        if not top_web:
-            st.write("No web sources available.")
-        for section, sources in top_web.items():
-            st.markdown(f"**{section.replace('_', ' ').title()}**")
-            if not sources:
-                st.write("- No sources")
-            for src in sources:
-                title = src.get("title", "Untitled source")
-                link = src.get("link", "")
-                snippet = src.get("snippet", "")
-                if link:
-                    st.markdown(f"- [{title}]({link})")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Country web results", research.get("country_web_results", 0))
+    col2.metric("City web results", research.get("city_web_results", 0))
+    col3.metric("City YouTube results", research.get("city_youtube_results", 0))
+
+    with st.expander("Open city research sources"):
+        for city in all_cities:
+            city_data = city_intel.get(city, {})
+            city_web = city_data.get("web_research", {}) if isinstance(city_data, dict) else {}
+            st.markdown(f"**{city}**")
+            if not city_web:
+                st.write("- No web sources logged for this city.")
+            for section, sources in city_web.items():
+                st.markdown(f"*{section.replace('_', ' ').title()}*")
+                for src in sources[:2]:
+                    title = src.get("title", "Untitled source")
+                    link = src.get("link", "")
+                    snippet = src.get("snippet", "")
+                    if link:
+                        st.markdown(f"  - [{title}]({link})")
+                    else:
+                        st.write(f"  - {title}")
+                    if snippet:
+                        st.caption(f"  {snippet}")
+
+    with st.expander("Open city YouTube sources"):
+        for city in all_cities:
+            city_data = city_intel.get(city, {})
+            videos = city_data.get("youtube_research", []) if isinstance(city_data, dict) else []
+            st.markdown(f"**{city}**")
+            if not videos:
+                st.write("- No YouTube sources for this city.")
+            for video in videos:
+                title = video.get("title", "Untitled video")
+                url = video.get("video_url", "")
+                channel = video.get("channel", "Unknown channel")
+                if url:
+                    st.markdown(f"  - [{title}]({url})")
                 else:
-                    st.write(f"- {title}")
-                if snippet:
-                    st.caption(snippet)
+                    st.write(f"  - {title}")
+                st.caption(f"  Channel: {channel}")
 
-    with st.expander("Open YouTube research sources"):
-        videos = research.get("top_youtube_sources", [])
-        if not videos:
-            st.write("No YouTube sources available.")
-        for video in videos:
-            title = video.get("title", "Untitled video")
-            url = video.get("video_url", "")
-            channel = video.get("channel", "Unknown channel")
-            if url:
-                st.markdown(f"- [{title}]({url})")
-            else:
-                st.write(f"- {title}")
-            st.caption(f"Channel: {channel}")
 
+# ---------------------------------------------------------------------------
+# Debug panel (sidebar)
+# ---------------------------------------------------------------------------
 
 def render_debug_panel():
     with st.sidebar:
@@ -699,13 +949,21 @@ def render_debug_panel():
             st.rerun()
 
 
+# ---------------------------------------------------------------------------
+# Main dashboard builder
+# ---------------------------------------------------------------------------
+
 def build_dashboard(report, quality_warnings):
     traveler = report["traveler_profile"]
+    destination = report["destination_context"]
+    all_cities = destination.get("all_cities", [destination.get("anchor_city", "")])
+    cities_display = " + ".join(all_cities) if all_cities else destination.get("anchor_city", "")
+
     st.markdown(
         f"""
         <div class="app-hero">
             <h1>Travel Planner Dashboard</h1>
-            <p>{traveler["origin"]} → {report["destination_context"]["city"]}, {report["destination_context"]["country"]} • {traveler["days"]} days • {traveler["travel_style"]} trip</p>
+            <p>{traveler["origin"]} to {cities_display}, {destination.get("country", "")} • {traveler["days"]} days • {traveler["travel_style"]} trip</p>
         </div>
         """,
         unsafe_allow_html=True,
