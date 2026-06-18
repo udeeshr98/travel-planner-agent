@@ -19,6 +19,10 @@ ALLOWED_BUDGET_FIT = ["Low", "Moderate", "High", "Luxury", "Budget-friendly", "A
 ALLOWED_INTERESTS = ["Beaches", "Food", "Culture", "Nature", "Shopping", "Nightlife", "Temples", "Museums"]
 
 
+# ---------------------------------------------------------------------------
+# Core HTTP helpers
+# ---------------------------------------------------------------------------
+
 def safe_get_json(url, params=None, timeout=30):
     response = requests.get(url, params=params, timeout=timeout)
     response.raise_for_status()
@@ -30,6 +34,10 @@ def safe_post_json(url, payload, timeout=60):
     response.raise_for_status()
     return response.json()
 
+
+# ---------------------------------------------------------------------------
+# Text helpers
+# ---------------------------------------------------------------------------
 
 def clean_text(value):
     return str(value).strip() if value is not None else ""
@@ -58,12 +66,20 @@ def dedupe_results(results):
     return cleaned
 
 
+# ---------------------------------------------------------------------------
+# Geocoding
+# ---------------------------------------------------------------------------
+
 def get_location_options(city_or_region):
     url = "https://geocoding-api.open-meteo.com/v1/search"
     params = {"name": city_or_region, "count": 5, "language": "en", "format": "json"}
     data = safe_get_json(url, params=params, timeout=30)
     return data.get("results", [])
 
+
+# ---------------------------------------------------------------------------
+# Weather helpers  (anchor location only)
+# ---------------------------------------------------------------------------
 
 def get_weather_details(latitude, longitude, timezone):
     url = "https://api.open-meteo.com/v1/forecast"
@@ -145,6 +161,10 @@ def build_weather_summary(weather):
     }
 
 
+# ---------------------------------------------------------------------------
+# Search helpers
+# ---------------------------------------------------------------------------
+
 def serpapi_search(query, num_results=3):
     url = "https://serpapi.com/search.json"
     params = {"engine": "google", "q": query, "api_key": SERPAPI_API_KEY, "num": num_results}
@@ -182,43 +202,45 @@ def youtube_search(query, max_results=2):
     return results
 
 
-def build_live_research_context(parsed_profile, selected_location):
-    destination = f"{parsed_profile['destination_city_region']}, {parsed_profile['destination_country']}"
+# ---------------------------------------------------------------------------
+# CITY-LEVEL research  (runs once per selected city)
+# ---------------------------------------------------------------------------
+
+def build_city_research(city, country, parsed_profile):
+    """
+    Collects web + YouTube research specifically for one city.
+    All search queries are city-specific so the intel is never generic.
+    """
+    destination = f"{city}, {country}"
     interests_text = ", ".join(parsed_profile.get("interests", []))
     hotel_category = parsed_profile.get("hotel_category", "")
     food_preference = parsed_profile.get("food_preference", "")
+    budget = parsed_profile.get("budget", "")
 
     search_plan = {
         "best_areas_to_stay": [
-            f"best areas to stay in {destination}",
-            f"{destination} neighborhoods for tourists",
+            f"best areas to stay in {destination} for tourists",
+            f"{destination} best neighborhoods for visitors",
         ],
         "must_visit_places": [
             f"must visit places in {destination}",
-            f"top attractions in {destination}",
+            f"top tourist attractions in {destination}",
         ],
         "suggested_places_by_interest": [
-            f"best {interests_text} in {destination}",
-            f"{destination} hidden gems {interests_text}",
+            f"best {interests_text} spots in {destination}",
+            f"{destination} things to do {interests_text}",
         ],
         "hotels": [
-            f"best {hotel_category} hotels in {destination}",
-            f"where to stay in {destination} hotels {parsed_profile['budget']}",
+            f"best {hotel_category} hotels in {destination} {budget}",
+            f"recommended {hotel_category} hotels in {city} {country} for tourists",
         ],
         "food": [
-            f"best {food_preference} food in {destination}",
-            f"top restaurants in {destination} {food_preference}",
+            f"best {food_preference} food restaurants in {destination}",
+            f"famous local food spots in {city} must try dishes {food_preference}",
         ],
-        "transport": [
-            f"how to get around {destination}",
-            f"{destination} public transport for tourists",
-        ],
-        "culture": [
-            f"{destination} culture etiquette for tourists",
-        ],
-        "safety": [
-            f"{destination} tourist safety tips",
-            f"{destination} areas to avoid tourists",
+        "local_transport": [
+            f"how to get around {destination} for tourists",
+            f"{destination} local transport options tuk tuk taxi songthaew",
         ],
     }
 
@@ -234,8 +256,8 @@ def build_live_research_context(parsed_profile, selected_location):
 
     youtube_queries = [
         f"{destination} travel guide",
-        f"{destination} where to stay",
-        f"{destination} food guide",
+        f"best hotels in {destination}",
+        f"{destination} food guide must try",
     ]
     youtube_results = []
     for query in youtube_queries:
@@ -243,14 +265,9 @@ def build_live_research_context(parsed_profile, selected_location):
     youtube_results = dedupe_results(youtube_results)[:6]
 
     return {
-        "destination": destination,
-        "selected_location": {
-            "name": clean_text(selected_location.get("name")),
-            "country": clean_text(selected_location.get("country")),
-            "latitude": selected_location.get("latitude"),
-            "longitude": selected_location.get("longitude"),
-            "timezone": clean_text(selected_location.get("timezone")),
-        },
+        "city": city,
+        "country": country,
+        "destination_label": destination,
         "web_research": web_research,
         "youtube_research": youtube_results,
         "source_counts": {
@@ -260,31 +277,132 @@ def build_live_research_context(parsed_profile, selected_location):
     }
 
 
-def get_research_schema(selected_city, selected_country, user_interests):
+# ---------------------------------------------------------------------------
+# COUNTRY-LEVEL research  (runs once for the whole trip)
+# ---------------------------------------------------------------------------
+
+def build_country_research(country, selected_cities, parsed_profile):
+    """
+    Collects country-level context: climate/season, visa, etiquette, safety,
+    and inter-city transport between the user's specific selected cities.
+    """
+    cities_text = " and ".join(selected_cities) if selected_cities else country
+    cities_joined = ", ".join(selected_cities) if selected_cities else country
+
+    search_plan = {
+        "best_season_climate": [
+            f"best time to visit {country} for tourists weather season",
+            f"{country} climate travel seasons when to go",
+        ],
+        "visa_entry": [
+            f"{country} visa requirements for Indian tourists",
+            f"entry requirements for visiting {country}",
+        ],
+        "country_etiquette": [
+            f"{country} culture etiquette for tourists dos and donts",
+            f"customs and traditions in {country} for visitors",
+        ],
+        "country_safety": [
+            f"{country} tourist safety tips general",
+            f"is {country} safe for tourists travel advice",
+        ],
+        "intercity_transport": [
+            f"how to travel between {cities_text} in {country}",
+            f"{cities_joined} travel options bus train flight {country}",
+            f"getting from {selected_cities[0]} to {selected_cities[-1]} {country}" if len(selected_cities) >= 2 else f"transport within {country}",
+        ],
+    }
+
+    web_research = {}
+    total_web_results = 0
+    for section, queries in search_plan.items():
+        section_results = []
+        for query in queries:
+            section_results.extend(serpapi_search(query, num_results=3))
+        section_results = dedupe_results(section_results)[:6]
+        web_research[section] = section_results
+        total_web_results += len(section_results)
+
+    return {
+        "country": country,
+        "selected_cities": selected_cities,
+        "web_research": web_research,
+        "source_counts": {
+            "web_results_count": total_web_results,
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# Master research builder  (replaces old build_live_research_context)
+# ---------------------------------------------------------------------------
+
+def build_live_research_context(parsed_profile, selected_location):
+    """
+    Builds a structured multi-city research context:
+    - country_context: climate, visa, etiquette, safety, inter-city transport
+    - city_research: per-city intel for every selected city
+    - anchor_location: geocoded anchor details
+    """
+    country = parsed_profile.get("destination_country", "")
+    selected_cities = parsed_profile.get("selected_cities", [])
+    custom_city = clean_text(parsed_profile.get("custom_city_region", ""))
+
+    # Build the full city list (selected + custom, deduplicated)
+    all_cities = list(dict.fromkeys(selected_cities + ([custom_city] if custom_city else [])))
+
+    # Fallback: if no cities were explicitly selected, use anchor
+    if not all_cities:
+        anchor_name = clean_text(selected_location.get("name", ""))
+        if anchor_name:
+            all_cities = [anchor_name]
+
+    # Country-level research
+    country_research = build_country_research(country, all_cities, parsed_profile)
+
+    # City-level research for every selected city
+    city_research = {}
+    total_city_web = 0
+    total_city_youtube = 0
+    for city in all_cities:
+        city_data = build_city_research(city, country, parsed_profile)
+        city_research[city] = city_data
+        total_city_web += city_data["source_counts"]["web_results_count"]
+        total_city_youtube += city_data["source_counts"]["youtube_results_count"]
+
+    return {
+        "anchor_location": {
+            "name": clean_text(selected_location.get("name")),
+            "country": clean_text(selected_location.get("country")),
+            "latitude": selected_location.get("latitude"),
+            "longitude": selected_location.get("longitude"),
+            "timezone": clean_text(selected_location.get("timezone")),
+        },
+        "all_cities": all_cities,
+        "country_research": country_research,
+        "city_research": city_research,
+        "source_counts": {
+            "country_web_results": country_research["source_counts"]["web_results_count"],
+            "city_web_results": total_city_web,
+            "city_youtube_results": total_city_youtube,
+        },
+    }
+
+
+# ---------------------------------------------------------------------------
+# JSON Schema builders
+# ---------------------------------------------------------------------------
+
+def get_city_schema(city, country, user_interests):
+    """
+    Schema for one city's intel block. Used inside the multi-city schema.
+    """
     return {
         "type": "object",
         "properties": {
-            "destination_guardrails": {
-                "type": "object",
-                "properties": {
-                    "selected_city": {"type": "string", "const": selected_city},
-                    "selected_country": {"type": "string", "const": selected_country},
-                },
-                "required": ["selected_city", "selected_country"],
-            },
-            "destination_snapshot": {
-                "type": "object",
-                "properties": {
-                    "summary": {"type": "string"},
-                    "traveler_fit": {"type": "string"},
-                    "key_characteristics": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "minItems": 3,
-                        "maxItems": 5,
-                    },
-                },
-                "required": ["summary", "traveler_fit", "key_characteristics"],
+            "city_fit_summary": {
+                "type": "string",
+                "description": f"One sentence describing what {city} is best for (e.g. best for beaches and nightlife)."
             },
             "best_areas_to_stay": {
                 "type": "array",
@@ -386,16 +504,6 @@ def get_research_schema(selected_city, selected_country, user_interests):
                     ],
                 },
             },
-            "weather_climate": {
-                "type": "object",
-                "properties": {
-                    "summary": {"type": "string"},
-                    "comfort_level": {"type": "string"},
-                    "travel_impact": {"type": "string"},
-                    "planning_advice": {"type": "array", "items": {"type": "string"}},
-                },
-                "required": ["summary", "comfort_level", "travel_impact", "planning_advice"],
-            },
             "local_transport": {
                 "type": "object",
                 "properties": {
@@ -403,15 +511,52 @@ def get_research_schema(selected_city, selected_country, user_interests):
                     "common_modes": {"type": "array", "items": {"type": "string"}},
                     "best_options_for_tourists": {"type": "array", "items": {"type": "string"}},
                     "cost_notes": {"type": "array", "items": {"type": "string"}},
-                    "area_connectivity": {"type": "string"},
                     "practical_tips": {"type": "array", "items": {"type": "string"}},
                 },
                 "required": [
                     "summary", "common_modes", "best_options_for_tourists",
-                    "cost_notes", "area_connectivity", "practical_tips",
+                    "cost_notes", "practical_tips",
                 ],
             },
-            "culture_etiquette": {
+        },
+        "required": [
+            "city_fit_summary",
+            "best_areas_to_stay",
+            "must_visit_places",
+            "suggested_places_by_interest",
+            "hotel_recommendations",
+            "food_recommendations",
+            "local_transport",
+        ],
+    }
+
+
+def get_country_context_schema():
+    return {
+        "type": "object",
+        "properties": {
+            "best_season_climate": {
+                "type": "object",
+                "properties": {
+                    "summary": {"type": "string"},
+                    "best_months_to_visit": {"type": "array", "items": {"type": "string"}},
+                    "months_to_avoid": {"type": "array", "items": {"type": "string"}},
+                    "climate_notes": {"type": "string"},
+                },
+                "required": ["summary", "best_months_to_visit", "months_to_avoid", "climate_notes"],
+            },
+            "visa_entry": {
+                "type": "object",
+                "properties": {
+                    "summary": {"type": "string"},
+                    "visa_on_arrival": {"type": "string"},
+                    "duration_allowed": {"type": "string"},
+                    "key_requirements": {"type": "array", "items": {"type": "string"}},
+                    "notes": {"type": "string"},
+                },
+                "required": ["summary", "visa_on_arrival", "duration_allowed", "key_requirements", "notes"],
+            },
+            "country_etiquette": {
                 "type": "object",
                 "properties": {
                     "people_and_social_norms": {"type": "string"},
@@ -426,42 +571,82 @@ def get_research_schema(selected_city, selected_country, user_interests):
                     "religious_site_etiquette", "dos", "donts",
                 ],
             },
-            "safety_and_cautions": {
+            "country_safety": {
                 "type": "object",
                 "properties": {
                     "overall_note": {"type": "string"},
                     "safe_areas": {"type": "array", "items": {"type": "string"}},
                     "caution_areas": {"type": "array", "items": {"type": "string"}},
                     "common_issues": {"type": "array", "items": {"type": "string"}},
-                    "transport_cautions": {"type": "array", "items": {"type": "string"}},
-                    "food_hygiene_notes": {"type": "array", "items": {"type": "string"}},
+                    "emergency_numbers": {"type": "string"},
                 },
                 "required": [
                     "overall_note", "safe_areas", "caution_areas",
-                    "common_issues", "transport_cautions", "food_hygiene_notes",
+                    "common_issues", "emergency_numbers",
                 ],
             },
-            "planning_tradeoffs": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "topic": {"type": "string"},
-                        "tradeoff": {"type": "string"},
-                        "who_should_choose_this": {"type": "string"},
+            "intercity_transport": {
+                "type": "object",
+                "properties": {
+                    "summary": {"type": "string"},
+                    "routes": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "from_city": {"type": "string"},
+                                "to_city": {"type": "string"},
+                                "options": {"type": "array", "items": {"type": "string"}},
+                                "estimated_duration": {"type": "string"},
+                                "cost_estimate": {"type": "string"},
+                                "recommended_mode": {"type": "string"},
+                            },
+                            "required": [
+                                "from_city", "to_city", "options",
+                                "estimated_duration", "cost_estimate", "recommended_mode",
+                            ],
+                        },
                     },
-                    "required": ["topic", "tradeoff", "who_should_choose_this"],
+                    "practical_tips": {"type": "array", "items": {"type": "string"}},
                 },
+                "required": ["summary", "routes", "practical_tips"],
             },
         },
         "required": [
-            "destination_guardrails", "destination_snapshot", "best_areas_to_stay",
-            "must_visit_places", "suggested_places_by_interest", "hotel_recommendations",
-            "food_recommendations", "weather_climate", "local_transport",
-            "culture_etiquette", "safety_and_cautions", "planning_tradeoffs",
+            "best_season_climate",
+            "visa_entry",
+            "country_etiquette",
+            "country_safety",
+            "intercity_transport",
         ],
     }
 
+
+def get_multi_city_schema(all_cities, country, user_interests):
+    """
+    Top-level schema: country_context + one city block per selected city.
+    """
+    cities_properties = {}
+    for city in all_cities:
+        cities_properties[city] = get_city_schema(city, country, user_interests)
+
+    return {
+        "type": "object",
+        "properties": {
+            "country_context": get_country_context_schema(),
+            "city_intel": {
+                "type": "object",
+                "properties": cities_properties,
+                "required": all_cities,
+            },
+        },
+        "required": ["country_context", "city_intel"],
+    }
+
+
+# ---------------------------------------------------------------------------
+# Inference helpers  (same as before)
+# ---------------------------------------------------------------------------
 
 def destination_text_is_valid(text, selected_city, selected_country):
     text = clean_text(text).lower()
@@ -517,13 +702,13 @@ def classify_interest_fit(name, text_blob, user_interests):
     value = f"{clean_text(name)} {clean_text(text_blob)}".lower()
     for interest in user_interests:
         interest_lower = interest.lower()
-        if interest_lower == "beaches" and any(word in value for word in ["beach", "bondi", "manly", "coast", "surf"]):
+        if interest_lower == "beaches" and any(word in value for word in ["beach", "coast", "surf"]):
             return interest
-        if interest_lower == "nightlife" and any(word in value for word in ["bar", "club", "pub", "nightlife", "music", "late-night", "distillery", "party"]):
+        if interest_lower == "nightlife" and any(word in value for word in ["bar", "club", "pub", "nightlife", "music", "party"]):
             return interest
-        if interest_lower == "food" and any(word in value for word in ["restaurant", "cafe", "food", "vegan", "vegetarian", "dining"]):
+        if interest_lower == "food" and any(word in value for word in ["restaurant", "cafe", "food", "dining"]):
             return interest
-        if interest_lower == "culture" and any(word in value for word in ["opera", "museum", "gallery", "historic", "heritage", "theatre"]):
+        if interest_lower == "culture" and any(word in value for word in ["opera", "museum", "gallery", "historic", "heritage"]):
             return interest
         if interest_lower == "nature" and any(word in value for word in ["park", "garden", "trail", "reserve"]):
             return interest
@@ -536,27 +721,9 @@ def classify_interest_fit(name, text_blob, user_interests):
     return user_interests[0] if user_interests else "Culture"
 
 
-def validate_destination_consistency(report, selected_location):
-    issues = []
-    selected_city = clean_text(selected_location.get("name"))
-    selected_country = clean_text(selected_location.get("country"))
-
-    guardrails = report.get("destination_guardrails", {})
-    if clean_text(guardrails.get("selected_city")) != selected_city:
-        issues.append("destination_guardrails.selected_city does not match selected destination.")
-    if clean_text(guardrails.get("selected_country")) != selected_country:
-        issues.append("destination_guardrails.selected_country does not match selected country.")
-
-    snapshot = report.get("destination_snapshot", {})
-    if not destination_text_is_valid(snapshot.get("summary", ""), selected_city, selected_country):
-        issues.append("destination_snapshot.summary does not mention the selected city or country.")
-    if not destination_text_is_valid(snapshot.get("traveler_fit", ""), selected_city, selected_country):
-        issues.append("destination_snapshot.traveler_fit does not mention the selected city or country.")
-    if len(ensure_list(snapshot.get("key_characteristics"))) < 3:
-        issues.append("destination_snapshot.key_characteristics has fewer than 3 items.")
-
-    return issues
-
+# ---------------------------------------------------------------------------
+# Per-city cleaning helpers
+# ---------------------------------------------------------------------------
 
 def clean_best_area_items(items):
     cleaned, seen = [], set()
@@ -591,16 +758,13 @@ def clean_must_visit_items(items):
         if key in seen:
             continue
         seen.add(key)
-
         why_visit = normalize_whitespace(item.get("why_visit"))
         category = normalize_whitespace(item.get("category"))
         if category not in ALLOWED_PLACE_CATEGORIES:
             category = infer_place_category(name, why_visit)
-
         weather_sensitivity = normalize_whitespace(item.get("weather_sensitivity"))
         if weather_sensitivity not in ALLOWED_WEATHER_SENSITIVITY:
             weather_sensitivity = "Moderate"
-
         cleaned.append({
             "name": name,
             "category": category,
@@ -616,7 +780,6 @@ def clean_must_visit_items(items):
 def clean_interest_items(items, parsed_profile):
     user_interests = parsed_profile.get("interests", [])
     cleaned, seen = [], set()
-
     for item in items:
         name = normalize_whitespace(item.get("name"))
         if not name:
@@ -625,16 +788,13 @@ def clean_interest_items(items, parsed_profile):
         if key in seen:
             continue
         seen.add(key)
-
         why_suggested = normalize_whitespace(item.get("why_suggested"))
         matched_interest = normalize_whitespace(item.get("matched_interest"))
         if matched_interest not in user_interests:
             matched_interest = classify_interest_fit(name, why_suggested, user_interests)
-
         indoor_outdoor = normalize_whitespace(item.get("indoor_outdoor"))
         if indoor_outdoor not in ["Indoor", "Outdoor", "Mixed"]:
             indoor_outdoor = infer_indoor_outdoor(name, why_suggested)
-
         cleaned.append({
             "name": name,
             "matched_interest": matched_interest,
@@ -642,7 +802,6 @@ def clean_interest_items(items, parsed_profile):
             "indoor_outdoor": indoor_outdoor,
             "time_needed": normalize_whitespace(item.get("time_needed")),
         })
-
     return cleaned[:6]
 
 
@@ -696,190 +855,199 @@ def clean_food_items(items, hotel_names):
     return cleaned[:5]
 
 
-def apply_destination_safe_fallbacks(data, parsed_profile, selected_location, weather_summary, live_research):
-    warnings = []
-    selected_city = clean_text(selected_location.get("name"))
-    selected_country = clean_text(selected_location.get("country"))
-    user_interests = parsed_profile.get("interests", [])
-
-    snapshot = data.get("destination_snapshot", {})
-    summary = normalize_whitespace(snapshot.get("summary"))
-    traveler_fit = normalize_whitespace(snapshot.get("traveler_fit"))
-    key_characteristics = ensure_list(snapshot.get("key_characteristics"))
-
-    if not summary or contains_placeholder_text(summary) or not destination_text_is_valid(summary, selected_city, selected_country):
-        summary = (
-            f"{selected_city}, {selected_country} is a major city destination with iconic sights, diverse neighborhoods, "
-            f"and a mix of coastal and urban experiences that work well for a short leisure trip."
-        )
-        warnings.append("Replaced weak destination summary with destination-safe fallback.")
-
-    if not traveler_fit or contains_placeholder_text(traveler_fit) or not destination_text_is_valid(traveler_fit, selected_city, selected_country):
-        traveler_fit = (
-            f"For this {parsed_profile.get('days')} day trip, {selected_city} fits travelers seeking "
-            f"{', '.join(user_interests).lower()} experiences on a {parsed_profile.get('budget', '').lower()} budget."
-        )
-        warnings.append("Replaced weak traveler_fit with destination-safe fallback.")
-
-    cleaned_characteristics = []
-    for item in key_characteristics:
-        item = normalize_whitespace(item)
-        if item and not contains_placeholder_text(item):
-            cleaned_characteristics.append(item)
-
-    if len(cleaned_characteristics) < 3:
-        cleaned_characteristics = [
-            f"{selected_city} combines waterfront attractions, major landmarks, and varied neighborhoods.",
-            f"Current conditions suggest {weather_summary.get('activity_suitability', '').lower()}.",
-            f"This plan is tuned to {', '.join(user_interests).lower()} preferences.",
-        ]
-        warnings.append("Rebuilt destination key_characteristics with fallback values.")
-
-    data["destination_snapshot"] = {
-        "summary": summary,
-        "traveler_fit": traveler_fit,
-        "key_characteristics": cleaned_characteristics[:5],
+def clean_local_transport(transport):
+    return {
+        "summary": normalize_whitespace(transport.get("summary")),
+        "common_modes": ensure_list(transport.get("common_modes")),
+        "best_options_for_tourists": ensure_list(transport.get("best_options_for_tourists")),
+        "cost_notes": ensure_list(transport.get("cost_notes")),
+        "practical_tips": ensure_list(transport.get("practical_tips")),
     }
 
-    best_areas = clean_best_area_items(data.get("best_areas_to_stay", []))
-    must_visit = clean_must_visit_items(data.get("must_visit_places", []))
-    by_interest = clean_interest_items(data.get("suggested_places_by_interest", []), parsed_profile)
-    hotels = clean_hotel_items(data.get("hotel_recommendations", []))
+
+# ---------------------------------------------------------------------------
+# City-level fallbacks
+# ---------------------------------------------------------------------------
+
+def apply_city_safe_fallbacks(city_data, city, country, parsed_profile, warnings):
+    user_interests = parsed_profile.get("interests", [])
+
+    city_fit = normalize_whitespace(city_data.get("city_fit_summary", ""))
+    if not city_fit or contains_placeholder_text(city_fit):
+        city_data["city_fit_summary"] = f"{city} is a popular destination in {country} known for its unique attractions and local experiences."
+        warnings.append(f"[{city}] Added fallback city_fit_summary.")
+
+    best_areas = clean_best_area_items(city_data.get("best_areas_to_stay", []))
+    must_visit = clean_must_visit_items(city_data.get("must_visit_places", []))
+    by_interest = clean_interest_items(city_data.get("suggested_places_by_interest", []), parsed_profile)
+    hotels = clean_hotel_items(city_data.get("hotel_recommendations", []))
     hotel_names = {item["hotel_name"].lower() for item in hotels}
-    food_items = clean_food_items(data.get("food_recommendations", []), hotel_names)
+    food = clean_food_items(city_data.get("food_recommendations", []), hotel_names)
+    transport = clean_local_transport(city_data.get("local_transport", {}))
 
     if not must_visit:
         must_visit = [{
-            "name": selected_city,
+            "name": f"{city} city centre",
             "category": "Landmark",
-            "why_visit": f"Central areas of {selected_city} provide easy access to its best-known landmarks and public spaces.",
+            "why_visit": f"The central areas of {city} are home to its best-known landmarks and public spaces.",
             "best_for": ["Sightseeing"],
             "time_needed": "2-4 hours",
             "best_time_to_visit": "Morning or late afternoon",
             "weather_sensitivity": "Moderate",
         }]
-        warnings.append("Added fallback must_visit_places entry.")
+        warnings.append(f"[{city}] Added fallback must_visit_places entry.")
 
     if not by_interest and user_interests:
         fallback_interest = user_interests[0]
         by_interest = [{
-            "name": f"{selected_city} nightlife district",
+            "name": f"{city} {fallback_interest.lower()} area",
             "matched_interest": fallback_interest,
-            "why_suggested": f"A destination-relevant suggestion aligned with {fallback_interest.lower()} preferences.",
+            "why_suggested": f"A suggestion aligned with {fallback_interest.lower()} experiences in {city}.",
             "indoor_outdoor": "Mixed",
             "time_needed": "2-3 hours",
         }]
-        warnings.append("Added fallback suggested_places_by_interest entry.")
-
-    data["best_areas_to_stay"] = best_areas
-    data["must_visit_places"] = must_visit
-    data["suggested_places_by_interest"] = by_interest
-    data["hotel_recommendations"] = hotels
-    data["food_recommendations"] = food_items
-
-    weather_block = data.get("weather_climate", {})
-    weather_block["summary"] = normalize_whitespace(weather_block.get("summary"))
-    weather_block["comfort_level"] = normalize_whitespace(weather_block.get("comfort_level"))
-    weather_block["travel_impact"] = normalize_whitespace(weather_block.get("travel_impact"))
-    weather_block["planning_advice"] = ensure_list(weather_block.get("planning_advice"))
-
-    if not weather_block["summary"] or contains_placeholder_text(weather_block["summary"]):
-        weather_block["summary"] = (
-            f"Current conditions in {selected_city} are {weather_summary.get('weather_description', '').lower()} "
-            f"with temperatures around {weather_summary.get('temperature_now_c')}°C."
-        )
-        warnings.append("Replaced weak weather summary with actual weather fallback.")
-    data["weather_climate"] = weather_block
-
-    transport = data.get("local_transport", {})
-    transport["summary"] = normalize_whitespace(transport.get("summary"))
-    transport["common_modes"] = ensure_list(transport.get("common_modes"))
-    transport["best_options_for_tourists"] = ensure_list(transport.get("best_options_for_tourists"))
-    transport["cost_notes"] = ensure_list(transport.get("cost_notes"))
-    transport["area_connectivity"] = normalize_whitespace(transport.get("area_connectivity"))
-    transport["practical_tips"] = ensure_list(transport.get("practical_tips"))
-
-    safe_cost_notes = []
-    for note in transport["cost_notes"]:
-        if "free" in note.lower() and "ferr" in note.lower():
-            continue
-        safe_cost_notes.append(note)
-    transport["cost_notes"] = safe_cost_notes
+        warnings.append(f"[{city}] Added fallback suggested_places_by_interest entry.")
 
     if not transport["summary"]:
-        transport["summary"] = f"{selected_city} has a well-connected public transport network with trains, buses, ferries, and light rail."
-        warnings.append("Added fallback local transport summary.")
+        transport["summary"] = f"{city} has standard local transport options including taxis and ride-hailing services."
+        warnings.append(f"[{city}] Added fallback local transport summary.")
 
-    if not transport["cost_notes"]:
-        transport["cost_notes"] = [
-            "Public transport costs vary by route, distance, and payment method.",
-            "Ferries are scenic but typically paid rather than free.",
-        ]
-        warnings.append("Replaced unsupported transport cost notes with safer fallback.")
+    city_data["best_areas_to_stay"] = best_areas
+    city_data["must_visit_places"] = must_visit
+    city_data["suggested_places_by_interest"] = by_interest
+    city_data["hotel_recommendations"] = hotels
+    city_data["food_recommendations"] = food
+    city_data["local_transport"] = transport
 
-    data["local_transport"] = transport
+    return city_data
 
-    culture = data.get("culture_etiquette", {})
-    culture["people_and_social_norms"] = normalize_whitespace(culture.get("people_and_social_norms"))
-    culture["dress_code"] = normalize_whitespace(culture.get("dress_code"))
-    culture["dining_etiquette"] = normalize_whitespace(culture.get("dining_etiquette"))
-    culture["religious_site_etiquette"] = normalize_whitespace(culture.get("religious_site_etiquette"))
-    culture["dos"] = ensure_list(culture.get("dos"))
-    culture["donts"] = ensure_list(culture.get("donts"))
 
-    if not culture["religious_site_etiquette"]:
-        culture["religious_site_etiquette"] = "Be respectful, keep noise low, and follow any local dress or photography guidance at religious sites."
-        warnings.append("Added fallback religious_site_etiquette guidance.")
-    data["culture_etiquette"] = culture
+# ---------------------------------------------------------------------------
+# Country-level fallbacks
+# ---------------------------------------------------------------------------
 
-    safety = data.get("safety_and_cautions", {})
-    safety["overall_note"] = normalize_whitespace(safety.get("overall_note"))
-    safety["safe_areas"] = ensure_list(safety.get("safe_areas"))
-    safety["caution_areas"] = ensure_list(safety.get("caution_areas"))
-    safety["common_issues"] = ensure_list(safety.get("common_issues"))
-    safety["transport_cautions"] = ensure_list(safety.get("transport_cautions"))
-    safety["food_hygiene_notes"] = ensure_list(safety.get("food_hygiene_notes"))
+def apply_country_safe_fallbacks(country_context, country, selected_cities, warnings):
+    season = country_context.get("best_season_climate", {})
+    if not normalize_whitespace(season.get("summary", "")):
+        country_context["best_season_climate"] = {
+            "summary": f"{country} generally has a tropical or subtropical climate. Check specific seasonal conditions before travel.",
+            "best_months_to_visit": ["November", "December", "January", "February"],
+            "months_to_avoid": [],
+            "climate_notes": "Weather can vary significantly by region and season.",
+        }
+        warnings.append(f"[{country}] Added fallback best_season_climate.")
 
-    if "always some level of risk" in safety["overall_note"].lower():
-        safety["overall_note"] = f"{selected_city} is generally safe for visitors, with normal care recommended in busy urban areas."
-        warnings.append("Softened generic alarmist safety wording.")
-    data["safety_and_cautions"] = safety
+    visa = country_context.get("visa_entry", {})
+    if not normalize_whitespace(visa.get("summary", "")):
+        country_context["visa_entry"] = {
+            "summary": f"Check current visa requirements for {country} based on your nationality before travel.",
+            "visa_on_arrival": "Check with official embassy or consulate",
+            "duration_allowed": "Varies by nationality",
+            "key_requirements": ["Valid passport", "Return ticket", "Proof of funds"],
+            "notes": "Always verify with official government sources before travelling.",
+        }
+        warnings.append(f"[{country}] Added fallback visa_entry.")
 
-    tradeoffs = []
-    for item in data.get("planning_tradeoffs", []):
-        topic = normalize_whitespace(item.get("topic"))
-        tradeoff = normalize_whitespace(item.get("tradeoff"))
-        who = normalize_whitespace(item.get("who_should_choose_this"))
-        if topic and tradeoff and who:
-            tradeoffs.append({
-                "topic": topic,
-                "tradeoff": tradeoff,
-                "who_should_choose_this": who,
+    etiquette = country_context.get("country_etiquette", {})
+    if not normalize_whitespace(etiquette.get("people_and_social_norms", "")):
+        country_context["country_etiquette"] = {
+            "people_and_social_norms": f"Locals in {country} are generally welcoming to tourists. Be respectful of local customs.",
+            "dress_code": "Dress modestly when visiting temples or religious sites.",
+            "dining_etiquette": "Follow local dining customs and be respectful at meal times.",
+            "religious_site_etiquette": "Remove shoes before entering temples. Dress modestly and keep noise low.",
+            "dos": ["Greet locals politely", "Respect religious sites", "Follow local rules"],
+            "donts": ["Avoid public displays of disrespect", "Do not litter", "Do not touch religious objects without permission"],
+        }
+        warnings.append(f"[{country}] Added fallback country_etiquette.")
+
+    safety = country_context.get("country_safety", {})
+    if not normalize_whitespace(safety.get("overall_note", "")):
+        country_context["country_safety"] = {
+            "overall_note": f"{country} is generally safe for tourists. Exercise normal caution as you would in any travel destination.",
+            "safe_areas": ["Tourist zones and city centres are generally well-monitored."],
+            "caution_areas": ["Avoid poorly lit or isolated areas at night."],
+            "common_issues": ["Petty theft in crowded areas", "Taxi overcharging"],
+            "emergency_numbers": "Check local emergency numbers before travel.",
+        }
+        warnings.append(f"[{country}] Added fallback country_safety.")
+
+    intercity = country_context.get("intercity_transport", {})
+    if not normalize_whitespace(intercity.get("summary", "")):
+        routes = []
+        for i in range(len(selected_cities) - 1):
+            routes.append({
+                "from_city": selected_cities[i],
+                "to_city": selected_cities[i + 1],
+                "options": ["Domestic flight", "Bus", "Train"],
+                "estimated_duration": "Varies - check current schedules",
+                "cost_estimate": "Varies by mode and booking time",
+                "recommended_mode": "Domestic flight for long distances, bus for shorter routes",
             })
-    data["planning_tradeoffs"] = tradeoffs[:4]
+        country_context["intercity_transport"] = {
+            "summary": f"Travel between {', '.join(selected_cities)} in {country} is possible via multiple transport modes.",
+            "routes": routes,
+            "practical_tips": [
+                "Book transport in advance especially during peak season.",
+                "Compare bus, train, and flight options for cost and time.",
+            ],
+        }
+        warnings.append(f"[{country}] Added fallback intercity_transport.")
 
-    return data, warnings
+    return country_context
 
 
-def clean_research_output(data, parsed_profile, selected_location, weather_summary, live_research):
+# ---------------------------------------------------------------------------
+# Consistency validation
+# ---------------------------------------------------------------------------
+
+def validate_multi_city_consistency(report, all_cities, country):
+    issues = []
+    city_intel = report.get("city_intel", {})
+    for city in all_cities:
+        if city not in city_intel:
+            issues.append(f"city_intel is missing a block for selected city: {city}.")
+        else:
+            city_block = city_intel[city]
+            if not city_block.get("must_visit_places"):
+                issues.append(f"[{city}] must_visit_places is empty.")
+            if not city_block.get("hotel_recommendations"):
+                issues.append(f"[{city}] hotel_recommendations is empty.")
+            if not city_block.get("food_recommendations"):
+                issues.append(f"[{city}] food_recommendations is empty.")
+    if not report.get("country_context"):
+        issues.append("country_context block is missing from the report.")
+    return issues
+
+
+# ---------------------------------------------------------------------------
+# Output cleaner
+# ---------------------------------------------------------------------------
+
+def clean_multi_city_output(data, parsed_profile, selected_location, weather_summary, live_research):
     warnings = []
-    selected_city = clean_text(selected_location.get("name"))
-    selected_country = clean_text(selected_location.get("country"))
+    country = parsed_profile.get("destination_country", clean_text(selected_location.get("country")))
+    all_cities = live_research.get("all_cities", [])
+    selected_cities = parsed_profile.get("selected_cities", [])
 
-    data["destination_guardrails"] = {
-        "selected_city": selected_city,
-        "selected_country": selected_country,
-    }
+    # Clean country context
+    country_context = data.get("country_context", {})
+    country_context = apply_country_safe_fallbacks(country_context, country, selected_cities or all_cities, warnings)
+    data["country_context"] = country_context
 
-    data, fallback_warnings = apply_destination_safe_fallbacks(
-        data, parsed_profile, selected_location, weather_summary, live_research
-    )
-    warnings.extend(fallback_warnings)
+    # Clean city intel for each selected city
+    city_intel = data.get("city_intel", {})
+    cleaned_city_intel = {}
+    for city in all_cities:
+        city_data = city_intel.get(city, {})
+        city_data = apply_city_safe_fallbacks(city_data, city, country, parsed_profile, warnings)
+        cleaned_city_intel[city] = city_data
+    data["city_intel"] = cleaned_city_intel
 
     combined_output = {
         "destination_context": {
-            "city": selected_city,
-            "country": selected_country,
+            "country": country,
+            "all_cities": all_cities,
+            "anchor_city": clean_text(selected_location.get("name")),
             "timezone": clean_text(selected_location.get("timezone")),
             "latitude": selected_location.get("latitude"),
             "longitude": selected_location.get("longitude"),
@@ -887,75 +1055,70 @@ def clean_research_output(data, parsed_profile, selected_location, weather_summa
         "traveler_profile": parsed_profile,
         "weather_summary": weather_summary,
         "research_summary": {
-            "web_results_count": int(live_research.get("source_counts", {}).get("web_results_count", 0)),
-            "youtube_results_count": int(live_research.get("source_counts", {}).get("youtube_results_count", 0)),
-            "top_web_sources": {
-                section: results[:2]
-                for section, results in live_research.get("web_research", {}).items()
-            },
-            "top_youtube_sources": live_research.get("youtube_research", [])[:3],
+            "country_web_results": int(live_research.get("source_counts", {}).get("country_web_results", 0)),
+            "city_web_results": int(live_research.get("source_counts", {}).get("city_web_results", 0)),
+            "city_youtube_results": int(live_research.get("source_counts", {}).get("city_youtube_results", 0)),
         },
         "final_report": {
-            "destination_guardrails": data["destination_guardrails"],
-            "destination_snapshot": data.get("destination_snapshot", {}),
-            "best_areas_to_stay": data.get("best_areas_to_stay", []),
-            "must_visit_places": data.get("must_visit_places", []),
-            "suggested_places_by_interest": data.get("suggested_places_by_interest", []),
-            "hotel_recommendations": data.get("hotel_recommendations", []),
-            "food_recommendations": data.get("food_recommendations", []),
-            "weather_climate": data.get("weather_climate", {}),
-            "local_transport": data.get("local_transport", {}),
-            "culture_etiquette": data.get("culture_etiquette", {}),
-            "safety_and_cautions": data.get("safety_and_cautions", {}),
-            "planning_tradeoffs": data.get("planning_tradeoffs", []),
+            "country_context": data.get("country_context", {}),
+            "city_intel": data.get("city_intel", {}),
         },
     }
 
-    consistency_issues = validate_destination_consistency(combined_output["final_report"], selected_location)
+    consistency_issues = validate_multi_city_consistency(combined_output["final_report"], all_cities, country)
     return combined_output, warnings, consistency_issues
 
 
+# ---------------------------------------------------------------------------
+# Ollama generation  (multi-city aware)
+# ---------------------------------------------------------------------------
+
 def get_research_from_ollama(parsed_profile, selected_location, weather_summary, live_research):
-    selected_city = clean_text(selected_location.get("name"))
-    selected_country = clean_text(selected_location.get("country"))
+    country = parsed_profile.get("destination_country", clean_text(selected_location.get("country")))
+    all_cities = live_research.get("all_cities", [])
     user_interests = parsed_profile.get("interests", []) or ALLOWED_INTERESTS[:2]
-    schema = get_research_schema(selected_city, selected_country, user_interests)
+
+    schema = get_multi_city_schema(all_cities, country, user_interests)
+
+    cities_instruction = ", ".join(all_cities)
+    intercity_pairs = ""
+    if len(all_cities) >= 2:
+        pairs = [f"{all_cities[i]} to {all_cities[i+1]}" for i in range(len(all_cities)-1)]
+        intercity_pairs = " and ".join(pairs)
 
     prompt = (
-        "You are a travel research synthesis agent.\n"
+        "You are a multi-city travel research synthesis agent.\n"
         "Return only valid JSON matching the provided schema.\n"
-        "Do not include markdown.\n"
-        "Do not include explanation outside JSON.\n"
-        "Use only the supplied evidence.\n"
-        "Never change the destination.\n"
+        "Do not include markdown. Do not include any explanation outside JSON.\n"
+        "MANDATORY: Every city in city_intel must have its own complete, city-specific data block.\n"
         "MANDATORY LANGUAGE RULES:\n"
         "- The entire response must be written in English only.\n"
         "- Every JSON field value must be in English only.\n"
-        "- Do not use German, French, Spanish, or any other non-English language in the final output.\n"
-        "- If any source evidence contains non-English text, translate it into clear English before writing the final JSON.\n"
-        "- Place descriptions, hotel notes, food notes, transport guidance, safety guidance, and cultural guidance must all be in English only.\n"
-        "- Do not copy non-English phrases from the source material.\n"
-        f"Selected city: {selected_city}\n"
-        f"Selected country: {selected_country}\n"
-        f"Allowed interests for matched_interest: {json.dumps(user_interests)}\n"
-        f"Allowed categories for must_visit_places.category: {json.dumps(ALLOWED_PLACE_CATEGORIES)}\n"
-        f"Allowed values for weather_sensitivity: {json.dumps(ALLOWED_WEATHER_SENSITIVITY)}\n"
-        "Do not invent free transport, fake hotel names, placeholder text, or unsupported safety claims.\n"
-        "Do not reuse hotels as restaurants unless clearly supported.\n"
-        "Rules:\n"
-        f"- destination_guardrails.selected_city must be exactly '{selected_city}'.\n"
-        f"- destination_guardrails.selected_country must be exactly '{selected_country}'.\n"
-        "- destination_snapshot.summary must explicitly mention the selected city or country.\n"
-        "- destination_snapshot.traveler_fit must explicitly mention the selected city or country.\n"
-        "- key_characteristics must have 3 to 5 clean natural-language items.\n"
-        "- suggested_places_by_interest.matched_interest must exactly match one user interest.\n"
-        "- local_transport.cost_notes must avoid claiming ferries are free unless clearly supported.\n"
-        "- culture_etiquette.religious_site_etiquette must never be blank.\n"
-        "- Keep attractions, hotels, and food recommendations in appropriate sections.\n\n"
+        "- Translate any non-English evidence into English before writing the JSON.\n\n"
+        f"Selected country: {country}\n"
+        f"Selected cities for this trip: {cities_instruction}\n"
+        f"Traveler interests: {json.dumps(user_interests)}\n"
+        f"Hotel preference: {parsed_profile.get('hotel_category', '')}\n"
+        f"Food preference: {parsed_profile.get('food_preference', '')}\n"
+        f"Budget: {parsed_profile.get('budget', '')}\n"
+        f"Trip days: {parsed_profile.get('days', '')}\n\n"
+        "RULES FOR city_intel:\n"
+        f"- You MUST generate a separate complete block for EACH of these cities: {cities_instruction}\n"
+        "- Each city's best_areas_to_stay, must_visit_places, suggested_places_by_interest, hotel_recommendations, food_recommendations, and local_transport must be specific to THAT city only.\n"
+        "- Do NOT mix recommendations between cities.\n"
+        "- Hotel recommendations must match the traveler's hotel_category preference and budget.\n"
+        "- Food recommendations must match the traveler's food_preference (veg/non-veg/both) and must include the specific restaurant or food spot name.\n"
+        "- suggested_places_by_interest.matched_interest must exactly match one of the traveler's interests.\n\n"
+        "RULES FOR country_context:\n"
+        "- best_season_climate must reflect the actual climate of the country and best travel months.\n"
+        "- visa_entry must reflect current general entry requirements.\n"
+        "- intercity_transport.routes must cover travel between the selected cities.\n"
+        f"- Specifically include route details for: {intercity_pairs if intercity_pairs else cities_instruction}\n\n"
         f"Traveler profile:\n{json.dumps(parsed_profile, indent=2)}\n\n"
-        f"Selected destination details:\n{json.dumps(selected_location, indent=2)}\n\n"
-        f"Weather summary:\n{json.dumps(weather_summary, indent=2)}\n\n"
-        f"Live research context:\n{json.dumps(live_research, indent=2)}\n\n"
+        f"Anchor location details:\n{json.dumps(selected_location, indent=2)}\n\n"
+        f"Weather summary (for anchor city):\n{json.dumps(weather_summary, indent=2)}\n\n"
+        f"City-specific live research:\n{json.dumps(live_research.get('city_research', {}), indent=2)}\n\n"
+        f"Country-level live research:\n{json.dumps(live_research.get('country_research', {}), indent=2)}\n\n"
         f"JSON Schema:\n{json.dumps(schema, indent=2)}\n"
     )
 
@@ -966,10 +1129,10 @@ def get_research_from_ollama(parsed_profile, selected_location, weather_summary,
         "format": schema,
     }
 
-    data = safe_post_json(OLLAMA_URL, payload, timeout=180)
+    data = safe_post_json(OLLAMA_URL, payload, timeout=300)
     response_text = data.get("response", "").strip()
     if not response_text:
         raise ValueError("Ollama returned an empty response.")
 
     parsed = json.loads(response_text)
-    return clean_research_output(parsed, parsed_profile, selected_location, weather_summary, live_research)
+    return clean_multi_city_output(parsed, parsed_profile, selected_location, weather_summary, live_research)
