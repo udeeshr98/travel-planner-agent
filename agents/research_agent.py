@@ -4,6 +4,8 @@ import requests
 import streamlit as st
 
 
+st.set_page_config(page_title="Travel Planner Agent", page_icon="✈️", layout="wide")
+
 SERPAPI_API_KEY = st.secrets["SERPAPI_API_KEY"]
 YOUTUBE_API_KEY = st.secrets["YOUTUBE_API_KEY"]
 OLLAMA_URL = "http://localhost:11434/api/generate"
@@ -19,10 +21,6 @@ ALLOWED_BUDGET_FIT = ["Low", "Moderate", "High", "Luxury", "Budget-friendly", "A
 ALLOWED_INTERESTS = ["Beaches", "Food", "Culture", "Nature", "Shopping", "Nightlife", "Temples", "Museums"]
 
 
-# ---------------------------------------------------------------------------
-# Core HTTP helpers
-# ---------------------------------------------------------------------------
-
 def safe_get_json(url, params=None, timeout=30):
     response = requests.get(url, params=params, timeout=timeout)
     response.raise_for_status()
@@ -34,10 +32,6 @@ def safe_post_json(url, payload, timeout=60):
     response.raise_for_status()
     return response.json()
 
-
-# ---------------------------------------------------------------------------
-# Text helpers
-# ---------------------------------------------------------------------------
 
 def clean_text(value):
     return str(value).strip() if value is not None else ""
@@ -64,6 +58,28 @@ def dedupe_results(results):
             seen.add(link)
             cleaned.append(item)
     return cleaned
+
+
+def contains_non_english(text):
+    return bool(re.search(r"[^\x00-\x7F]", clean_text(text)))
+
+
+def sanitize_english_output(data):
+    if isinstance(data, dict):
+        out = {}
+        for k, v in data.items():
+            if isinstance(v, str):
+                out[k] = normalize_whitespace(v)
+            elif isinstance(v, list):
+                out[k] = sanitize_english_output(v)
+            elif isinstance(v, dict):
+                out[k] = sanitize_english_output(v)
+            else:
+                out[k] = v
+        return out
+    if isinstance(data, list):
+        return [sanitize_english_output(x) for x in data]
+    return data
 
 
 # ---------------------------------------------------------------------------
@@ -348,19 +364,15 @@ def build_live_research_context(parsed_profile, selected_location):
     selected_cities = parsed_profile.get("selected_cities", [])
     custom_city = clean_text(parsed_profile.get("custom_city_region", ""))
 
-    # Build the full city list (selected + custom, deduplicated)
     all_cities = list(dict.fromkeys(selected_cities + ([custom_city] if custom_city else [])))
 
-    # Fallback: if no cities were explicitly selected, use anchor
     if not all_cities:
         anchor_name = clean_text(selected_location.get("name", ""))
         if anchor_name:
             all_cities = [anchor_name]
 
-    # Country-level research
     country_research = build_country_research(country, all_cities, parsed_profile)
 
-    # City-level research for every selected city
     city_research = {}
     total_city_web = 0
     total_city_youtube = 0
@@ -394,9 +406,6 @@ def build_live_research_context(parsed_profile, selected_location):
 # ---------------------------------------------------------------------------
 
 def get_city_schema(city, country, user_interests):
-    """
-    Schema for one city's intel block. Used inside the multi-city schema.
-    """
     return {
         "type": "object",
         "properties": {
@@ -623,9 +632,6 @@ def get_country_context_schema():
 
 
 def get_multi_city_schema(all_cities, country, user_interests):
-    """
-    Top-level schema: country_context + one city block per selected city.
-    """
     cities_properties = {}
     for city in all_cities:
         cities_properties[city] = get_city_schema(city, country, user_interests)
@@ -645,7 +651,7 @@ def get_multi_city_schema(all_cities, country, user_interests):
 
 
 # ---------------------------------------------------------------------------
-# Inference helpers  (same as before)
+# Inference helpers
 # ---------------------------------------------------------------------------
 
 def destination_text_is_valid(text, selected_city, selected_country):
@@ -1029,12 +1035,10 @@ def clean_multi_city_output(data, parsed_profile, selected_location, weather_sum
     all_cities = live_research.get("all_cities", [])
     selected_cities = parsed_profile.get("selected_cities", [])
 
-    # Clean country context
     country_context = data.get("country_context", {})
     country_context = apply_country_safe_fallbacks(country_context, country, selected_cities or all_cities, warnings)
     data["country_context"] = country_context
 
-    # Clean city intel for each selected city
     city_intel = data.get("city_intel", {})
     cleaned_city_intel = {}
     for city in all_cities:
@@ -1094,7 +1098,10 @@ def get_research_from_ollama(parsed_profile, selected_location, weather_summary,
         "MANDATORY LANGUAGE RULES:\n"
         "- The entire response must be written in English only.\n"
         "- Every JSON field value must be in English only.\n"
-        "- Translate any non-English evidence into English before writing the JSON.\n\n"
+        "- Translate any non-English evidence into clear English before writing the JSON.\n"
+        "- Do not output Chinese, Japanese, Korean, Thai, or any other non-English script.\n"
+        "- If a place name is commonly known in English, use the English version.\n"
+        "- If a place name is only local, rewrite it in English or transliteration.\n\n"
         f"Selected country: {country}\n"
         f"Selected cities for this trip: {cities_instruction}\n"
         f"Traveler interests: {json.dumps(user_interests)}\n"
@@ -1135,4 +1142,5 @@ def get_research_from_ollama(parsed_profile, selected_location, weather_summary,
         raise ValueError("Ollama returned an empty response.")
 
     parsed = json.loads(response_text)
+    parsed = sanitize_english_output(parsed)
     return clean_multi_city_output(parsed, parsed_profile, selected_location, weather_summary, live_research)
